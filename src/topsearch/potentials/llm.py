@@ -118,26 +118,29 @@ class LLM(Potential):
         self.model = trainer.model
         self.trainable_layers_names_and_sizes = [(name,param.size()) for (name,param) in self.model.named_parameters() if param.requires_grad]
         self.inputs = trainer.get_train_dataloader()
-        if len(self.inputs)!=1:
-            raise ValueError(f"At the moment we cannot evaluate mini-batches. Make sure the size of the training batch matches the size of data.")
-        for _ in self.inputs:
-            self.inputs = _ # trainer.get_train_dataloader() returns an iterator whose item I can only access using this trick
+        self.num_examples = trainer.num_examples(self.inputs)
+        if self.num_examples!=trainer.args.gradient_accumulation_steps*trainer.args.per_device_train_batch_size:
+            raise ValueError(f"At the moment we cannot evaluate mini-batches. Make sure the size of the training batch matches the size of data\n or that gradient_accumulation_steps*per_device_train_batch_size = train_size")
 
     def function(self, position: NDArray) -> float:
         """ Compute the loss value at a specific configuration of weights """
         self.set_new_weights(position)
-        loss = self.trainer.prediction_step(self.model,self.inputs,prediction_loss_only=True)
-        return loss[0].item()
+        loss = 0
+        for inputs in self.inputs: # run over gradient accumulation steps, if any
+            loss += self.trainer.prediction_step(self.model,inputs,prediction_loss_only=True)[0] / self.trainer.args.gradient_accumulation_steps
+        return loss.item() 
 
     def function_gradient(self, position: NDArray) -> tuple:
         """ Compute the loss and gradient at a specific configuration of weights """
         self.set_new_weights(position) # modifies the weights of the model according to the position vector
-        inputs = self.trainer._prepare_inputs(self.inputs)
-        self.model.eval()
         self.model.zero_grad()
-        loss = self.trainer.compute_loss(self.model, inputs)
-        self.trainer.accelerator.backward(loss)
-        loss = loss.detach() / self.trainer.args.gradient_accumulation_steps
+        total_loss = 0
+        for inputs in self.inputs: # run over gradient accumulation steps, if any
+            self.model.eval() # one needs this otherwise the model changes on every evaluation, due to Dropout and LayerNorm
+            loss = self.trainer.compute_loss(self.model, inputs)
+            self.trainer.accelerator.backward(loss)
+            total_loss += loss.detach() / self.trainer.args.gradient_accumulation_steps
+        loss = loss.detach() 
         gradients = []
         # get gradients
         for layer_name, _ in self.trainable_layers_names_and_sizes:
@@ -149,12 +152,11 @@ class LLM(Potential):
     def gradient(self, position: NDArray) -> NDArray:
         """ Compute the loss and gradient at a specific configuration of weights """
         self.set_new_weights(position) # modifies the weights of the model according to the position vector
-        inputs = self.trainer._prepare_inputs(self.inputs)
-        self.model.eval()
         self.model.zero_grad()
-        loss = self.trainer.compute_loss(self.model, inputs)
-        self.trainer.accelerator.backward(loss)
-        loss = loss.detach() / self.trainer.args.gradient_accumulation_steps
+        for inputs in self.inputs: # run over gradient accumulation steps, if any
+            self.model.eval() # one needs this otherwise the model changes on every evaluation, due to Dropout and LayerNorm
+            loss = self.trainer.compute_loss(self.model, inputs)
+            self.trainer.accelerator.backward(loss)
         gradients = []
         # get gradients
         for layer_name, _ in self.trainable_layers_names_and_sizes:
