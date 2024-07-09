@@ -117,6 +117,7 @@ class LLM(Potential):
         self.trainer = trainer
         self.model = trainer.model
         self.trainable_layers_names_and_sizes = [(name,param.size()) for (name,param) in self.model.named_parameters() if param.requires_grad]
+        # get data
         self.inputs = trainer.get_train_dataloader()
         self.num_examples = trainer.num_examples(self.inputs)
         if self.num_examples!=trainer.args.gradient_accumulation_steps*trainer.args.per_device_train_batch_size:
@@ -140,14 +141,13 @@ class LLM(Potential):
             loss = self.trainer.compute_loss(self.model, inputs)
             self.trainer.accelerator.backward(loss)
             total_loss += loss.detach() / self.trainer.args.gradient_accumulation_steps
-        loss = loss.detach() 
         gradients = []
         # get gradients
         for layer_name, _ in self.trainable_layers_names_and_sizes:
             layer = self.find_layer(self.model,layer_name) # get layer by name 
             gradients.append(layer.grad.flatten().tolist())
         gradients = np.concatenate([gradients])
-        return loss.item(), gradients.flatten()
+        return total_loss.item(), gradients.flatten()
 
     def gradient(self, position: NDArray) -> NDArray:
         """ Compute the loss and gradient at a specific configuration of weights """
