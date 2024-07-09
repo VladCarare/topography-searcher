@@ -9,10 +9,7 @@ import tempfile
 import torch 
 from topsearch.potentials import llm
 import numpy as np
-torch.use_deterministic_algorithms(True)
-torch.manual_seed(0)
 import random
-random.seed(0)
 
 class RepeatDataset:
     """Class copied from transformers/trainer_tests.py"""
@@ -28,6 +25,10 @@ def test_llm_weight_setting():
     """
     Set model's head weights to different values and check for reproducibility and expected loss and gradients.
     """
+    # set initial seeds
+    torch.use_deterministic_algorithms(True)
+    torch.manual_seed(0)
+    random.seed(0)
     # create a very small model akin to what one may encounter in production
     config = GPT2Config(vocab_size=10, n_positions=20, n_embd=2, n_layer=1, n_head=1)
     tiny_gpt2 = GPT2LMHeadModel(config)
@@ -100,6 +101,10 @@ def test_llm_gradient_accumulation():
     Changing per_device_train_batch_size to 5 and gradient_accumulation_steps to 2 and 
     comparing to the results of the model with per_device_train_batch_size 10 and gradient_accumulation_steps 1
     """
+    # set initial seeds
+    torch.use_deterministic_algorithms(True)
+    torch.manual_seed(0)
+    random.seed(0)
     # create a very small model akin to what one may encounter in production
     config = GPT2Config(vocab_size=10, n_positions=20, n_embd=2, n_layer=1, n_head=1)
     tiny_gpt2 = GPT2LMHeadModel(config)

@@ -141,6 +141,11 @@ class LLM(Potential):
             loss = self.trainer.compute_loss(self.model, inputs)
             self.trainer.accelerator.backward(loss)
             total_loss += loss.detach() / self.trainer.args.gradient_accumulation_steps
+        # clip norm of gradients
+        self.trainer.accelerator.clip_grad_norm_(
+                                self.model.parameters(),
+                                self.trainer.args.max_grad_norm,
+                            )
         gradients = []
         # get gradients
         for layer_name, _ in self.trainable_layers_names_and_sizes:
@@ -157,6 +162,11 @@ class LLM(Potential):
             self.model.eval() # one needs this otherwise the model changes on every evaluation, due to Dropout and LayerNorm
             loss = self.trainer.compute_loss(self.model, inputs)
             self.trainer.accelerator.backward(loss)
+        # clip norm of gradients
+        self.trainer.accelerator.clip_grad_norm_(
+                                self.model.parameters(),
+                                self.trainer.args.max_grad_norm,
+                            )
         gradients = []
         # get gradients
         for layer_name, _ in self.trainable_layers_names_and_sizes:
