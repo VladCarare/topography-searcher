@@ -110,7 +110,7 @@ class LLM(Potential):
         A Huggingface wrapper for Pytorch models, datasets and arguments (such as batch size).
     """
 
-    def __init__(self, trainer: transformers.trainer.Trainer) -> None:
+    def __init__(self, trainer: transformers.trainer.Trainer, regularizer_lambda = 0.01) -> None:
         self.n_params = trainer.get_num_trainable_parameters()
         if self.n_params > 1e4:
             raise ValueError(f"Number of trainable parameters is {self.n_params}. We can only accept values smaller than 10,000.\n Make sure you use\n\"for param in model.base_model.parameters():\n param.requires_grad = False\"\n or select a model with a smaller head.")
@@ -122,14 +122,19 @@ class LLM(Potential):
         self.num_examples = trainer.num_examples(self.inputs)
         if self.num_examples!=trainer.args.gradient_accumulation_steps*trainer.args.per_device_train_batch_size:
             raise ValueError(f"At the moment we cannot evaluate mini-batches. Make sure the size of the training batch matches the size of data\n or that gradient_accumulation_steps*per_device_train_batch_size = train_size")
+        self.regularizer_lambda = regularizer_lambda
 
     def function(self, position: NDArray) -> float:
         """ Compute the loss value at a specific configuration of weights """
         self.set_new_weights(position)
         loss = 0
         for inputs in self.inputs: # run over gradient accumulation steps, if any
-            loss += self.trainer.prediction_step(self.model,inputs,prediction_loss_only=True)[0] / self.trainer.args.gradient_accumulation_steps
-        return loss.item() 
+            loss += self.trainer.prediction_step(self.model,inputs,prediction_loss_only=True)[0]
+            # append L2 regularisation
+            for layer_name, _ in self.trainable_layers_names_and_sizes:
+                layer = self.find_layer(self.model,layer_name) # get layer by name 
+                loss += self.regularizer_lambda * layer.pow(2.0).sum()
+        return loss.item() / self.trainer.args.gradient_accumulation_steps 
 
     def function_gradient(self, position: NDArray) -> tuple:
         """ Compute the loss and gradient at a specific configuration of weights """
@@ -139,13 +144,18 @@ class LLM(Potential):
         for inputs in self.inputs: # run over gradient accumulation steps, if any
             self.model.eval() # one needs this otherwise the model changes on every evaluation, due to Dropout and LayerNorm
             loss = self.trainer.compute_loss(self.model, inputs)
+            # append L2 regularisation
+            for layer_name, _ in self.trainable_layers_names_and_sizes:
+                layer = self.find_layer(self.model,layer_name) # get layer by name 
+                loss += self.regularizer_lambda * layer.pow(2.0).sum()
+            # get gradients
             self.trainer.accelerator.backward(loss)
             total_loss += loss.detach() / self.trainer.args.gradient_accumulation_steps
-        # clip norm of gradients
-        self.trainer.accelerator.clip_grad_norm_(
-                                self.model.parameters(),
-                                self.trainer.args.max_grad_norm,
-                            )
+        # # clip norm of gradients
+        # self.trainer.accelerator.clip_grad_norm_(
+        #                         self.model.parameters(),
+        #                         self.trainer.args.max_grad_norm,
+        #                     )
         gradients = []
         # get gradients
         for layer_name, _ in self.trainable_layers_names_and_sizes:
@@ -155,25 +165,37 @@ class LLM(Potential):
         return total_loss.item(), gradients.flatten()
 
     def gradient(self, position: NDArray) -> NDArray:
-        """ Compute the loss and gradient at a specific configuration of weights """
+        """ Compute the gradient at a specific configuration of weights """
+        _, gradients = self.function_gradient(position)
+        return gradients
+
+    def hessian(self, position: NDArray) -> NDArray:
+        """ Compute the hessian at a specific configuration of weights """
         self.set_new_weights(position) # modifies the weights of the model according to the position vector
         self.model.zero_grad()
+        total_loss = 0
         for inputs in self.inputs: # run over gradient accumulation steps, if any
             self.model.eval() # one needs this otherwise the model changes on every evaluation, due to Dropout and LayerNorm
             loss = self.trainer.compute_loss(self.model, inputs)
+            # append L2 regularisation
+            for layer_name, _ in self.trainable_layers_names_and_sizes:
+                layer = self.find_layer(self.model,layer_name) # get layer by name 
+                loss += self.regularizer_lambda * layer.pow(2.0).sum()
+            # get gradients
             self.trainer.accelerator.backward(loss)
-        # clip norm of gradients
-        self.trainer.accelerator.clip_grad_norm_(
-                                self.model.parameters(),
-                                self.trainer.args.max_grad_norm,
-                            )
+            total_loss += loss.detach() / self.trainer.args.gradient_accumulation_steps
+        # # clip norm of gradients
+        # self.trainer.accelerator.clip_grad_norm_(
+        #                         self.model.parameters(),
+        #                         self.trainer.args.max_grad_norm,
+        #                     )
         gradients = []
         # get gradients
         for layer_name, _ in self.trainable_layers_names_and_sizes:
             layer = self.find_layer(self.model,layer_name) # get layer by name 
             gradients.append(layer.grad.flatten().tolist())
         gradients = np.concatenate([gradients])
-        return gradients.flatten()
+        return total_loss.item(), gradients.flatten()
 
     def set_new_weights(self, position: NDArray) -> None:
         """ Compute the loss value at a specific configuration of weights """
@@ -199,3 +221,4 @@ class LLM(Potential):
             return current_module
         except AttributeError:
             return None
+        

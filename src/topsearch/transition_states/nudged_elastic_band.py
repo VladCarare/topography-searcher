@@ -29,8 +29,6 @@ class NudgedElasticBand:
 
     potential : class instance
         The function which we are finding minimum energy paths on
-    minimiser : class instance
-        The local minimiser used for optimising the band
     force_constant : float
         The value of the force constant used in harmonic part of band energy
     image_density : float
