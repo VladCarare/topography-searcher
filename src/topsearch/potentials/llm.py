@@ -170,32 +170,7 @@ class LLM(Potential):
         return gradients
 
     def hessian(self, position: NDArray) -> NDArray:
-        """ Compute the hessian at a specific configuration of weights """
-        self.set_new_weights(position) # modifies the weights of the model according to the position vector
-        self.model.zero_grad()
-        total_loss = 0
-        for inputs in self.inputs: # run over gradient accumulation steps, if any
-            self.model.eval() # one needs this otherwise the model changes on every evaluation, due to Dropout and LayerNorm
-            loss = self.trainer.compute_loss(self.model, inputs)
-            # append L2 regularisation
-            for layer_name, _ in self.trainable_layers_names_and_sizes:
-                layer = self.find_layer(self.model,layer_name) # get layer by name 
-                loss += self.regularizer_lambda * layer.pow(2.0).sum()
-            # get gradients
-            self.trainer.accelerator.backward(loss)
-            total_loss += loss.detach() / self.trainer.args.gradient_accumulation_steps
-        # # clip norm of gradients
-        # self.trainer.accelerator.clip_grad_norm_(
-        #                         self.model.parameters(),
-        #                         self.trainer.args.max_grad_norm,
-        #                     )
-        gradients = []
-        # get gradients
-        for layer_name, _ in self.trainable_layers_names_and_sizes:
-            layer = self.find_layer(self.model,layer_name) # get layer by name 
-            gradients.append(layer.grad.flatten().tolist())
-        gradients = np.concatenate([gradients])
-        return total_loss.item(), gradients.flatten()
+        raise(ValueError('Hessian not yet implemented'))
 
     def set_new_weights(self, position: NDArray) -> None:
         """ Compute the loss value at a specific configuration of weights """
