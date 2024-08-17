@@ -20,36 +20,25 @@ imdb = load_dataset("imdb")
 small_train_dataset = imdb["train"].shuffle(seed=42).select([i for i in list(range(16))])
 small_test_dataset = imdb["test"].shuffle(seed=42).select([i for i in list(range(10))])
 
-# Set DistilBERT tokenizer
+# Set tokenizer
 from transformers import AutoTokenizer
 tokenizer = AutoTokenizer.from_pretrained("gpt2-large")
 
 
-# Define DistilBERT as our base model:
+# Define our base model:
 from transformers import AutoModelForSequenceClassification
 model = AutoModelForSequenceClassification.from_pretrained("gpt2-large", num_labels=2)
-
 model.to('xpu')
 model = ipex.optimize(model)
 for param in model.base_model.parameters():
     param.requires_grad = False
 
-
-
 if tokenizer.pad_token is None:
     print(f'Inserting pad token')
     tokenizer.add_special_tokens({'pad_token': '<|padding|>'})
     model.resize_token_embeddings(len(tokenizer))
-
 model.config.pad_token_id = tokenizer.pad_token_id
 model.config.pad_token_id
-
-model.save_pretrained("/home/vc381/rds/hpc-work/09052024-distillBertFineTunningSentiment/distil/test", from_pt=True) 
-model_new = AutoModelForSequenceClassification.from_pretrained("/home/vc381/rds/hpc-work/09052024-distillBertFineTunningSentiment/distil/test")
-model_new.to('xpu')
-model_new = ipex.optimize(model_new)
-for param in model_new.base_model.parameters():
-    param.requires_grad = False
 
 # Prepare the text inputs for the model
 def preprocess_function(examples):
@@ -68,19 +57,13 @@ data_collator = DataCollatorWithPadding(tokenizer=tokenizer)
 from transformers import TrainingArguments, Trainer
 
 repo_name = "test"
-
-
 training_args = TrainingArguments(
     output_dir=repo_name,
-    learning_rate=2e-5,
-    per_device_train_batch_size=16,
-    per_device_eval_batch_size=16,
+    per_device_train_batch_size=8,
+    gradient_accumulation_steps=2,
     num_train_epochs=0,
-    weight_decay=0.01,
-    push_to_hub=True,
     use_ipex=True,
 )
-
 trainer_just_head = Trainer(
     model=model,
     args=training_args,
@@ -89,11 +72,14 @@ trainer_just_head = Trainer(
     data_collator=data_collator,
 )
 
-trainer_just_head.train()
+from topsearch.potentials.llm import LLM
+import numpy as np
+
+llm = LLM(trainer_just_head,regularizer_lambda=1e-7)
+llm.function_gradient(np.zeros(2560))
 """
 import numpy as np
 from nptyping import NDArray
-from ase import Atoms
 from .potential import Potential
 import transformers
 import torch 
@@ -151,11 +137,6 @@ class LLM(Potential):
             # get gradients
             self.trainer.accelerator.backward(loss)
             total_loss += loss.detach() / self.trainer.args.gradient_accumulation_steps
-        # # clip norm of gradients
-        # self.trainer.accelerator.clip_grad_norm_(
-        #                         self.model.parameters(),
-        #                         self.trainer.args.max_grad_norm,
-        #                     )
         gradients = []
         # get gradients
         for layer_name, _ in self.trainable_layers_names_and_sizes:
