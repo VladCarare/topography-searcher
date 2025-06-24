@@ -61,6 +61,15 @@ class MachineLearningPotential(Potential):
             self.atoms.calc = \
                 MACECalculator(model_paths=model,
                                device=device)
+        elif self.calculator_type == 'mace-mp-0b3':
+            from mace.calculators import mace_mp 
+            model_path = '/home/vc381/rds/hpc-work/05122023-mace-gpt/mace-mp-0b3-medium.model'
+            print(f'Using model at: {model_path}')
+            import torch
+            torch.set_default_dtype(torch.float64)
+            self.atoms.calc = \
+                mace_mp(model=model_path,dispersion=False, default_dtype="float64",
+                               device=device)
         elif self.calculator_type == 'nequip':
             import torch
             torch.set_default_dtype(torch.float64)
@@ -84,7 +93,7 @@ class MachineLearningPotential(Potential):
     def function(self, position: NDArray) -> float:
         """ Compute the electronic potential energy """
         self.atoms.set_positions(position.reshape(-1, 3))
-        if self.calculator_type in ['mace', 'aimnet2', 'nequip']:
+        if self.calculator_type in ['mace', 'aimnet2', 'nequip','mace-mp-0b3']:
             energy = self.atoms.get_potential_energy()
         elif self.calculator_type == 'torchani':
             import torch
@@ -100,7 +109,7 @@ class MachineLearningPotential(Potential):
         """ Compute the electronic potential energy and its forces """
         self.atoms.set_positions(position.reshape(-1, 3))
 
-        if self.calculator_type == 'mace':
+        if self.calculator_type in ['mace','mace-mp-0b3']:
             # Calculate energy and forces using Psi4
             forces = self.atoms.get_forces().flatten()
             energy = self.atoms.get_potential_energy()
@@ -127,7 +136,7 @@ class MachineLearningPotential(Potential):
     def gradient(self, position: NDArray) -> NDArray:
         """ Compute the analytical gradient from the ASE calculator """
         self.atoms.set_positions(position.reshape(-1, 3))
-        if self.calculator_type in ['mace', 'aimnet2', 'nequip']:
+        if self.calculator_type in ['mace', 'aimnet2', 'nequip','mace-mp-0b3']:
             forces = self.atoms.get_forces().flatten()
             gradient = -1.0 * np.array(forces.tolist())
         elif self.calculator_type == 'torchani':
