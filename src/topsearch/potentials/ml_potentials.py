@@ -63,7 +63,7 @@ class MachineLearningPotential(Potential):
                                device=device)
         elif self.calculator_type == 'mace-mp-0b3':
             from mace.calculators import mace_mp 
-            model_path = '/home/vc381/rds/hpc-work/05122023-mace-gpt/mace-mp-0b3-medium.model'
+            model_path = 'mace-mp-0b3-medium.model'
             print(f'Using model at: {model_path}')
             import torch
             torch.set_default_dtype(torch.float64)
