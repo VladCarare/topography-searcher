@@ -66,14 +66,11 @@ class BasinHopping:
             print(f"doing step {i}")
             #  Perturb coordinates
             self.step_taking.perturb(coords)
-            # Test for and remove atom clashes if density functional theory
+            # Test for and remove atom clashes
             if isinstance(self.potential, DensityFunctionalTheory):
                 coords.remove_atom_clashes(self.potential.force_field)
             elif isinstance(coords, AtomicCoordinates):
-                try:
-                    coords.remove_atom_clashes()
-                except:
-                    pass # TODO: this was giving me an error with the MACE
+                coords.remove_atom_clashes(self.potential.force_field)
             # Perform local minimisation
             if self.opt_method == 'scipy':
                 min_position, energy, results_dict = \

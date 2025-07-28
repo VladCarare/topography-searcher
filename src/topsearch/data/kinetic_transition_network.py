@@ -125,8 +125,12 @@ class KineticTransitionNetwork:
         minima_coords = np.empty((0, ndim), dtype=object)
         for i in range(self.n_minima):
             e = self.G.nodes[i]['energy']
-            if not hasattr(e, '__iter__'):
-                    e = [e]
+            # if not hasattr(e, '__iter__'):
+            #         e = [e]           
+            try:
+                test = e[0]
+            except:
+                e = [float(e)]
             minima_data = np.append(
                 minima_data, [[i, e[0]]], axis=0)
             minima_coords = np.append(
@@ -138,8 +142,12 @@ class KineticTransitionNetwork:
             try:
                 print(self.G[node1][node2])
                 e =  self.G[node1][node2]['energy']
-                if not hasattr(e, '__iter__'):
-                    e = [e]
+                # if not hasattr(e, '__iter__'):
+                #     e = [e]    
+                try:
+                    test = e[0]
+                except:
+                    e = [float(e)]
                 ts_data = np.append(
                     ts_data,
                     [[node1, node2, e[0]]], axis=0)

@@ -27,12 +27,14 @@ class MachineLearningPotential(Potential):
                  atom_labels: list,
                  calculator_type: str = 'torchani',
                  model: str = 'default',
-                 device: str = 'cpu'):
+                 device: str = 'cpu',
+                 ff = None):
     
         self.atomistic = True
         self.calculator_type = calculator_type
         self.atom_labels = atom_labels
         self.device = device
+        self.force_field = ff
         # Make a placeholder atomic configuration for initialising calculator
         n_atoms = len(self.atom_labels)
         init_position = np.ones((n_atoms, 3), dtype=float) * \
@@ -63,7 +65,7 @@ class MachineLearningPotential(Potential):
                                device=device)
         elif self.calculator_type == 'mace-mp-0b3':
             from mace.calculators import mace_mp 
-            model_path = 'mace-mp-0b3-medium.model'
+            model_path = '/home/vc381/rds/hpc-work/05122023-mace-gpt/mace-mp-0b3-medium.model'
             print(f'Using model at: {model_path}')
             import torch
             torch.set_default_dtype(torch.float64)
@@ -79,6 +81,15 @@ class MachineLearningPotential(Potential):
                 NequIPCalculator.from_deployed_model(model,
                                device=device,
                                set_global_options=False)
+        elif self.calculator_type == 'so3lr':
+            import jax
+            jax.config.update("jax_enable_x64", True)
+            from so3lr import So3lrCalculator
+            self.atoms.calc = \
+                So3lrCalculator(
+                calculate_stress=False,
+                dtype=np.float64
+            )
         elif self.calculator_type == 'aimnet2':
             import torch
             torch.set_default_dtype(torch.float64)
@@ -93,7 +104,7 @@ class MachineLearningPotential(Potential):
     def function(self, position: NDArray) -> float:
         """ Compute the electronic potential energy """
         self.atoms.set_positions(position.reshape(-1, 3))
-        if self.calculator_type in ['mace', 'aimnet2', 'nequip','mace-mp-0b3']:
+        if self.calculator_type in ['mace', 'aimnet2', 'nequip','mace-mp-0b3','so3lr']:
             energy = self.atoms.get_potential_energy()
         elif self.calculator_type == 'torchani':
             import torch
@@ -109,7 +120,7 @@ class MachineLearningPotential(Potential):
         """ Compute the electronic potential energy and its forces """
         self.atoms.set_positions(position.reshape(-1, 3))
 
-        if self.calculator_type in ['mace','mace-mp-0b3']:
+        if self.calculator_type in ['mace','mace-mp-0b3','so3lr']:
             # Calculate energy and forces using Psi4
             forces = self.atoms.get_forces().flatten()
             energy = self.atoms.get_potential_energy()
@@ -136,7 +147,7 @@ class MachineLearningPotential(Potential):
     def gradient(self, position: NDArray) -> NDArray:
         """ Compute the analytical gradient from the ASE calculator """
         self.atoms.set_positions(position.reshape(-1, 3))
-        if self.calculator_type in ['mace', 'aimnet2', 'nequip','mace-mp-0b3']:
+        if self.calculator_type in ['mace', 'aimnet2', 'nequip','mace-mp-0b3','so3lr']:
             forces = self.atoms.get_forces().flatten()
             gradient = -1.0 * np.array(forces.tolist())
         elif self.calculator_type == 'torchani':
