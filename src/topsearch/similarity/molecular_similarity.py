@@ -97,57 +97,13 @@ class MolecularSimilarity(StandardSimilarity):
         permuted_coords = coords2.reshape(-1,3)[permutation].flatten()
         return permuted_coords, permutation
 
-        # dist_matrix = distance_matrix(coords1.position.reshape(-1,3),
-        #                                 coords2.reshape(-1,3))
-        # col_ind = linear_sum_assignment(dist_matrix**2)[1]
-        # permuted_coords = coords2.reshape(-1,3)[col_ind].flatten()
-        # return permuted_coords, col_ind
-
     def get_permutable_groups(self, coords1: MolecularCoordinates, coords2: NDArray) -> list:
         """ Determine the subsets of atoms that are allowed to be permuted
             when minimising the distance between conformations. Must be
-            of the same element and have the same bonds """
+            of the same element"""
         # Initialise the sets of permutable atoms from coords1 and 2
         permutable_groups1 = []
         permutable_groups2 = []
-        # # Get the connected species for each atom as we
-        # # only want to allow permutation of atoms with same bonding
-        # original_coords = coords1.position.copy()
-        # bond_labels1 = coords1.get_connected_atoms()
-        # coords1.position = coords2
-        # bond_labels2 = coords1.get_connected_atoms()
-        # coords1.position = original_coords
-        # # Find the set of different elements in the molecule
-        # elements = list(set(coords1.atom_labels))
-        # # Loop over each species separately
-        # for element in elements:
-        #     # Get each atom of a given element
-        #     element_atoms = \
-        #         [i for i, x in enumerate(coords1.atom_labels) if x == element]
-        #     # Initialise the arrays to store the connected atoms of each in set
-        #     elements_bonds1 = []
-        #     elements_bonds2 = []
-        #     # Loop over all atoms of element, adding their connections
-        #     for i in element_atoms:
-        #         elements_bonds1.append(bond_labels1[i])
-        #         elements_bonds2.append(bond_labels2[i])
-        #     # Find the unique set of environments for these atoms
-        #     unique_envs1 = \
-        #         list(set(tuple(sorted(row)) for row in elements_bonds1))
-        #     # Loop over each unique environment finding the atoms with it
-        #     for i in unique_envs1:
-        #         perm_atoms1 = []
-        #         perm_atoms2 = []
-        #         # Loop over all the atoms of this element checking which
-        #         # match the current environment
-        #         for j in element_atoms:
-        #             if bond_labels1[j] == list(i):
-        #                 perm_atoms1.append(j)
-        #             if bond_labels2[j] == list(i):
-        #                 perm_atoms2.append(j)
-        #         permutable_groups1.append(perm_atoms1)
-        #         permutable_groups2.append(perm_atoms2)
-        # return permutable_groups1, permutable_groups2
         elements = list(set(coords1.atom_labels))
         for element in elements:
             # Get each atom of a given element
@@ -157,6 +113,7 @@ class MolecularSimilarity(StandardSimilarity):
             permutable_groups1.append(element_atoms1)
             permutable_groups2.append(element_atoms2)
         return permutable_groups1, permutable_groups2
+        
     def rotational_alignment(self, coords1: MolecularCoordinates, coords2: NDArray) -> tuple:
         """ Find the rotation that minimises the distance between
             two sets of vectors using the Kabsch algorithm and apply it.
