@@ -1,6 +1,4 @@
-ase==3.22.1 ; python_version >= "3.10" and python_version < "3.13" \
-    --hash=sha256:004df6b0ea04b1114c790fadfe45d4125eb0e53125c66a93425af853d82ab432 \
-    --hash=sha256:66cc481e3d82bea8931d5fe677119932ea0bd1bc08b901fd84f36b37fa681c9e
+ase==3.23.0 ; python_version >= "3.10" and python_version < "3.13"
 contourpy==1.2.1 ; python_version >= "3.10" and python_version < "3.13" \
     --hash=sha256:00e5388f71c1a0610e6fe56b5c44ab7ba14165cdd6d695429c5cd94021e390b2 \
     --hash=sha256:10a37ae557aabf2509c79715cd20b62e4c7c28b8cd62dd7d99e5ed3ce28c3fd9 \
