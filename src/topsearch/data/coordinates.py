@@ -216,7 +216,8 @@ class MolecularCoordinates(AtomicCoordinates):
     def get_bonds(self) -> nx.Graph:
         """ Find the current bonding framework for self.position """
         nl = neighborlist.NeighborList(self.natural_cutoffs,
-                                       self_interaction=False)
+                                       self_interaction=False,
+                                       skin=0.2)#lower than 0.3 default to avoid spurious bonding
         self.atoms.set_positions(self.position.reshape(self.n_atoms, 3))
         nl.update(self.atoms)
         analysis = Analysis(self.position, nl=nl)
@@ -292,7 +293,8 @@ class MolecularCoordinates(AtomicCoordinates):
         """ Find all the dihedral angles we can rotate about,
             along with the atoms that should be rotated for each """
         nl = neighborlist.NeighborList(self.natural_cutoffs,
-                                       self_interaction=False)
+                                       self_interaction=False,
+                                       skin=0.2)
         self.atoms.set_positions(self.position.reshape(self.n_atoms, 3))
         nl.update(self.atoms)
         analysis = Analysis(self.position, nl=nl)
@@ -503,7 +505,8 @@ class MolecularCoordinates(AtomicCoordinates):
             self.position compute all dihedrals, angles and bond lengths
             needed to define the molecular configuration """
         nl = neighborlist.NeighborList(self.natural_cutoffs,
-                                       self_interaction=False)
+                                       self_interaction=False,
+                                       skin=0.2)
         self.atoms.set_positions(self.position.reshape(self.n_atoms, 3))
         nl.update(self.atoms)
         self.analysis = Analysis(self.position, nl=nl)
@@ -570,7 +573,8 @@ class MolecularCoordinates(AtomicCoordinates):
 
         # Set the atom positions to extract angles and dihedrals
         nl = neighborlist.NeighborList(self.natural_cutoffs,
-                                       self_interaction=False)
+                                       self_interaction=False,
+                                       skin=0.2)
         self.atoms.set_positions(self.position.reshape(self.n_atoms, 3))
         nl.update(self.atoms)
         self.analysis = Analysis(self.position, nl=nl)

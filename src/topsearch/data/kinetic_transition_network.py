@@ -234,20 +234,27 @@ class KineticTransitionNetwork:
 
         # Loop over all minima and test if new or not
         for i in range(other_ktn.n_minima):
-            coords.position = other_ktn.get_minimum_coords(i)
-            energy = other_ktn.get_minimum_energy(i)
-            similarity.test_new_minimum(self, coords, energy)
+            try:
+                coords.position = other_ktn.get_minimum_coords(i)
+                energy = other_ktn.get_minimum_energy(i)
+                similarity.test_new_minimum(self, coords, energy)
+            except ValueError:
+                self.add_minimum(other_ktn.get_minimum_coords(i), other_ktn.get_minimum_energy(i))
+
         # Loop over all TSs and test if new or not
         for u, v, edge_idx in other_ktn.G.edges:
-            coords.position = other_ktn.get_ts_coords(u, v, edge_idx)
-            ts_energy = other_ktn.get_ts_energy(u, v, edge_idx)
-            min1_coords = other_ktn.get_minimum_coords(u)
-            min1_energy = other_ktn.get_minimum_energy(u)
-            min2_coords = other_ktn.get_minimum_coords(v)
-            min2_energy = other_ktn.get_minimum_energy(v)
-            similarity.test_new_ts(self, coords, ts_energy,
-                                   min1_coords, min1_energy,
-                                   min2_coords, min2_energy)
+            try:
+                coords.position = other_ktn.get_ts_coords(u, v, edge_idx)
+                ts_energy = other_ktn.get_ts_energy(u, v, edge_idx)
+                min1_coords = other_ktn.get_minimum_coords(u)
+                min1_energy = other_ktn.get_minimum_energy(u)
+                min2_coords = other_ktn.get_minimum_coords(v)
+                min2_energy = other_ktn.get_minimum_energy(v)
+                similarity.test_new_ts(self, coords, ts_energy,
+                                    min1_coords, min1_energy,
+                                    min2_coords, min2_energy)
+            except ValueError:
+                self.add_ts(other_ktn.get_minimum_coords(i), other_ktn.get_minimum_energy(i),u,v)
         # Combine the pairlist files
         for i in other_ktn.pairlist:
             self.pairlist = np.append(
