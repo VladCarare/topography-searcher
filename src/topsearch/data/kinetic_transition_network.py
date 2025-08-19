@@ -111,7 +111,7 @@ class KineticTransitionNetwork:
         self.n_ts = 0
         self.pairlist = np.empty((0, 2), dtype=int)
 
-    def dump_network(self, text_string: str = '') -> None:
+    def dump_network(self, text_path: str = '', text_string: str = '') -> None:
         """
         Write network to text files:
         min.data stores the index and energy.
@@ -157,13 +157,13 @@ class KineticTransitionNetwork:
                 print(f"Transition state failed on ", node1, node2)
                 traceback.print_exc()
         # Write stationary point data and pairlist
-        np.savetxt(f"ts.data{text_string}",
+        np.savetxt(f"{text_path}ts.data{text_string}",
                    ts_data, fmt='%i %i %8.5f')
-        np.savetxt(f"ts.coords{text_string}", ts_coords)
-        np.savetxt(f"min.data{text_string}",
+        np.savetxt(f"{text_path}ts.coords{text_string}", ts_coords)
+        np.savetxt(f"{text_path}min.data{text_string}",
                    minima_data, fmt='%i %8.5f')
-        np.savetxt(f"min.coords{text_string}", minima_coords)
-        np.savetxt(f"pairlist{text_string}", self.pairlist, fmt='%i')
+        np.savetxt(f"{text_path}min.coords{text_string}", minima_coords)
+        np.savetxt(f"{text_path}pairlist{text_string}", self.pairlist, fmt='%i')
 
     def read_network(self, text_path: str = '', text_string: str = '') -> None:
         """ Returns G network from files that resulted from dump_network """
