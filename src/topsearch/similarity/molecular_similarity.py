@@ -40,6 +40,7 @@ class MolecularSimilarity(StandardSimilarity):
 
     def __init__(self, distance_criterion: float, energy_criterion: float,
                  weighted: bool = False, allow_inversion: bool = False):
+        super().__init__(distance_criterion,energy_criterion)
         self.distance_criterion = distance_criterion
         self.energy_criterion = energy_criterion
         self.weighted = weighted
@@ -51,7 +52,7 @@ class MolecularSimilarity(StandardSimilarity):
             for each atom of each distinct element. Finds the optimal
             permutation of all atoms respecting the atomic species """
         # Initialise permutation vector to track atom swaps
-        permutation = np.zeros((coords1.n_atoms), dtype=int)
+        permutation = []
         # Copy second coordinates to leave unchanged
         permuted_coords = coords2.copy()
         perm_group1, perm_group2 = self.get_permutable_groups(coords1, coords2)
@@ -70,19 +71,28 @@ class MolecularSimilarity(StandardSimilarity):
                 dist_matrix = distance_matrix(coords1_element,
                                               coords2_element)
                 if dist_matrix.shape[0] != dist_matrix.shape[1]:
-                    # print("warning: distance matrix wrong shape")
-                    break
+                    print("Warning: distance matrix wrong shape")
+                    raise ValueError
                 # Optimal permutational alignment
                 col_ind = linear_sum_assignment(dist_matrix**2)[1]
-                # Update coordinates and permutation vector
-                for idx, atom in enumerate(perm_atoms1):
-                    permutation[atom] = perm_atoms1[col_ind[idx]]
-                    permuted_coords[atom*3:(atom*3)+3] = \
-                        coords2[perm_atoms2[col_ind[idx]]*3:
-                                (perm_atoms2[col_ind[idx]]*3)+3]
+
+                # Rely on numpy to do the permutation efficiently and correctly
+                p = np.array(perm_atoms1)[col_ind]
+                permutation.append(p)
+
             # Only one atom so no need for permutational alignment
             else:
-                permutation[perm_atoms1[0]] = perm_atoms1[0]
+                permutation.append(np.array([perm_atoms1[0]]))
+
+        permutation = np.concatenate(permutation)
+        coords_2_indices = list(np.concatenate(perm_group2)) 
+        # Create a mapping from indices to positions in list
+        index_to_position = {value: i for i, value in enumerate(coords_2_indices)}
+        # Apply the mapping to reorder permutation
+        permutation = [permutation[index_to_position[i]] for i in range(len(permutation))]
+        
+        # Finally, permute coords according to the permutation, again using Numpy
+        permuted_coords = coords2.reshape(-1,3)[permutation].flatten()
         return permuted_coords, permutation
 
     def get_permutable_groups(self, coords1: type, coords2: NDArray) -> list:
@@ -92,45 +102,24 @@ class MolecularSimilarity(StandardSimilarity):
         # Initialise the sets of permutable atoms from coords1 and 2
         permutable_groups1 = []
         permutable_groups2 = []
-        # Get the connected species for each atom as we
-        # only want to allow permutation of atoms with same bonding
-        original_coords = coords1.position.copy()
-        bond_labels1 = coords1.get_connected_atoms()
-        coords1.position = coords2
-        bond_labels2 = coords1.get_connected_atoms()
-        coords1.position = original_coords
-        # Find the set of different elements in the molecule
+        # # Get the connected species for each atom as we
+        # # only want to allow permutation of atoms with same bonding
+        # original_coords = coords1.position.copy()
+        # bond_labels1 = coords1.get_connected_atoms()
+        # coords1.position = coords2
+        # bond_labels2 = coords1.get_connected_atoms()
+        # coords1.position = original_coords
+        # # Find the set of different elements in the molecule
         elements = list(set(coords1.atom_labels))
         # Loop over each species separately
         for element in elements:
             # Get each atom of a given element
-            element_atoms = \
+            element_atoms1 = \
                 [i for i, x in enumerate(coords1.atom_labels) if x == element]
-            # Initialise the arrays to store the connected atoms of each in set
-            elements_bonds1 = []
-            elements_bonds2 = []
-            # Loop over all atoms of element, adding their connections
-            for i in element_atoms:
-                elements_bonds1.append(bond_labels1[i])
-                elements_bonds2.append(bond_labels2[i])
-            # Find the unique set of environments for these atoms
-            unique_envs1 = \
-                list(set(tuple(sorted(row)) for row in elements_bonds1))
-            # Loop over each unique environment finding the atoms with it
-            for i in unique_envs1:
-                perm_atoms1 = []
-                perm_atoms2 = []
-                # Loop over all the atoms of this element checking which
-                # match the current environment
-                for j in element_atoms:
-                    if bond_labels1[j] == list(i):
-                        perm_atoms1.append(j)
-                    if bond_labels2[j] == list(i):
-                        perm_atoms2.append(j)
-                permutable_groups1.append(perm_atoms1)
-                permutable_groups2.append(perm_atoms2)
+            element_atoms2 = element_atoms1
+            permutable_groups1.append(element_atoms1)
+            permutable_groups2.append(element_atoms2)
         return permutable_groups1, permutable_groups2
-
     def rotational_alignment(self, coords1: type, coords2: NDArray) -> tuple:
         """ Find the rotation that minimises the distance between
             two sets of vectors using the Kabsch algorithm and apply it """
@@ -144,6 +133,7 @@ class MolecularSimilarity(StandardSimilarity):
                 rotations.align_vectors(coords1.position.reshape(-1, 3),
                                         coords2.reshape(-1, 3))
         coords2 = best_rotation.apply(coords2.reshape(-1, 3))
+        dist = dist/np.sqrt(coords1.n_atoms)
         return dist, coords2.flatten()
 
     def random_rotation(self, position: NDArray) -> NDArray:

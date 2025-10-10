@@ -36,7 +36,7 @@ class KineticTransitionNetwork:
     """
 
     def __init__(self) -> None:
-        self.G = nx.Graph()
+        self.G = nx.MultiGraph()
         self.n_minima = 0
         self.n_ts = 0
         self.pairlist = np.empty((0, 2), dtype=int)
@@ -52,13 +52,13 @@ class KineticTransitionNetwork:
         """ Returns the energy of a given node minimum """
         return self.G.nodes[minimum]['energy']
 
-    def get_ts_coords(self, min_plus: int, min_minus: int) -> None:
-        """ Returns coordinates of ts edge between min_plus and min_minus """
-        return self.G[min_plus][min_minus]['coords']
-
-    def get_ts_energy(self, min_plus: int, min_minus: int) -> None:
-        """ Returns energy of ts edge between min_plus and min_minus """
-        return self.G[min_plus][min_minus]['energy']
+    def get_ts_coords(self, min_plus: int, min_minus: int, edge_index: int = 0) -> None:
+        """ Returns coordinates of edge_index-th ts edge between min_plus and min_minus """
+        return self.G[min_plus][min_minus][edge_index]['coords']
+    
+    def get_ts_energy(self, min_plus: int, min_minus: int, edge_index: int = 0) -> None:
+        """ Returns energy of edge_index-th ts edge between min_plus and min_minus """
+        return self.G[min_plus][min_minus][edge_index]['energy']
 
     def add_minimum(self, min_coords: NDArray, energy: float) -> None:
         """ Add a node to the network with data for the minimum """
@@ -92,21 +92,34 @@ class KineticTransitionNetwork:
         for c, i in enumerate(np.sort(minima), 0):
             self.remove_minimum(i-c)
 
-    def remove_ts(self, minimum1: int, minimum2: int) -> None:
-        """ Remove the transition state connected the two passed minima """
-        self.G.remove_edge(minimum1, minimum2)
+    def remove_ts(self, minimum1: int, minimum2: int, edge_index: int = -1) -> None:
+        """ Remove the edge_index-th transition state connecting the two passed minima 
+            If edge_index is not passed, or is equal to -1, will remove the latest TS added"""
+        if edge_index==-1:
+            edge_index = None
+        self.G.remove_edge(minimum1, minimum2, edge_index)
         self.n_ts -= 1
+
+    def remove_all_ts(self, minimum1: int, minimum2: int) -> None:
+        """ Removes all transition states connecting the two passed minima"""
+        while self.G.number_of_edges(minimum1,minimum2):
+            self.G.remove_edge(minimum1, minimum2)
+            self.n_ts -= 1
 
     def remove_tss(self, minima: list) -> None:
         """ Remove an array of transition states in one go """
         for i in minima:
             self.remove_ts(i[0], i[1])
 
+    def remove_all_tss(self, minima: list) -> None:
+        """ Remove all transition states between minima in one go """
+        for i in minima:
+            self.remove_all_ts(i[0], i[1])
     #  INPUT/OUTPUT FUNCTIONS
 
     def reset_network(self) -> None:
         """ Empty the network """
-        self.G = nx.Graph()
+        self.G = nx.MultiGraph()
         self.n_minima = 0
         self.n_ts = 0
         self.pairlist = np.empty((0, 2), dtype=int)
@@ -138,10 +151,10 @@ class KineticTransitionNetwork:
         # Get transition state data out of the network
         ts_data = np.empty((0, 3), dtype=object)
         ts_coords = np.empty((0, ndim), dtype=object)
-        for node1, node2 in self.G.edges():
+        for node1, node2, edge_idx in self.G.edges:
             try:
-                print(self.G[node1][node2])
-                e =  self.G[node1][node2]['energy']
+                print(self.G[node1][node2][edge_idx])
+                e =  self.G[node1][node2][edge_idx]['energy']
                 # if not hasattr(e, '__iter__'):
                 #     e = [e]    
                 try:
@@ -152,9 +165,9 @@ class KineticTransitionNetwork:
                     ts_data,
                     [[node1, node2, e[0]]], axis=0)
                 ts_coords = np.append(
-                    ts_coords, [self.G[node1][node2]['coords']], axis=0)
+                    ts_coords, [self.G[node1][node2][edge_idx]['coords']], axis=0)
             except:
-                print(f"Transition state failed on ", node1, node2)
+                print(f"Transition state failed on ", node1, node2, edge_idx)
                 traceback.print_exc()
         # Write stationary point data and pairlist
         np.savetxt(f"{text_path}ts.data{text_string}",
