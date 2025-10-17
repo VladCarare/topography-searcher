@@ -122,7 +122,7 @@ class DensityFunctionalTheory(Potential):
             with contextlib.redirect_stdout(None): # silence chatty Psi4
                 hess = calc.psi4.driver.hessian(f'{method}/{basis}',
                                                 molecule=calc.molecule,).to_array()
-            hess *= Bohr**2/Hartree
+            hess *= Hartree/Bohr**2
         except Exception:
             traceback.print_exc()
             hess = np.full((position.size, position.size), np.inf, dtype=float)

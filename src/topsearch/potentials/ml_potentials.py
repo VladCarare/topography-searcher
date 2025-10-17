@@ -157,7 +157,7 @@ class MachineLearningPotential(Potential):
             coordinates = torch.tensor(position.reshape(-1, 3),
                                        dtype=torch.float32,
                                        requires_grad=True).unsqueeze(0)
-            energy_torch = self.model((species, coordinates)).energies
+            energy_torch = self.model((species, coordinates)).energies * Hartree
             gradient_torch = torch.autograd.grad(energy_torch.sum(),
                                                  coordinates)[0]
             gradient = np.array(gradient_torch.flatten().tolist())
