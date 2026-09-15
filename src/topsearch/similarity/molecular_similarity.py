@@ -260,7 +260,7 @@ class MolecularSimilarity(StandardSimilarity):
             self.test_exact_same(coords1, coords2)
         # Return already if coords sufficiently close to be considered the same
         if dist < self.distance_criterion:
-            return dist, coords1, coords2_aligned, permutation
+            return dist, coords1.position, coords2_aligned, permutation
         # Not identical so try to find best permutation and rotation
         best_dist = dist
         best_coords2 = coords2_aligned
@@ -272,7 +272,7 @@ class MolecularSimilarity(StandardSimilarity):
                 self.align(coords1, coords2_rotated)
             # If sufficiently close to be a match leave the loop early
             if dist < self.distance_criterion:
-                return dist, coords1, coords_opt, permutation
+                return dist, coords1.position, coords_opt, permutation
             # If an improvement on previous closest alignment then update
             if dist < best_dist:
                 best_dist = dist
@@ -287,7 +287,7 @@ class MolecularSimilarity(StandardSimilarity):
                 self.test_exact_same(coords1, coords2)
             # Return already if coords sufficiently close to be the same
             if dist < self.distance_criterion:
-                return dist, coords1, coords2_aligned, permutation
+                return dist, coords1.position, coords2_aligned, permutation
             # Not identical so try to find best permutation and rotation
             if dist < best_dist:
                 best_dist = dist
@@ -300,7 +300,7 @@ class MolecularSimilarity(StandardSimilarity):
                     self.align(coords1, coords2_rotated)
                 # If sufficiently close to be a match leave the loop early
                 if dist < self.distance_criterion:
-                    return dist, coords1, coords_opt, permutation
+                    return dist, coords1.position, coords_opt, permutation
                 # If an improvement on previous closest alignment then update
                 if dist < best_dist:
                     best_dist = dist
