@@ -636,3 +636,32 @@ def test_get_furthest_perpendicular():
     similarity = MolecularSimilarity(0.01, 0.05, weighted=True)
     furthest = similarity.get_furthest_perpendicular(position.flatten(), 7)
     assert furthest == [5, 6]
+
+def test_optimal_alignment_always_returns_position_array():
+    """ optimal_alignment must return coords1 as a position array on every
+        return path. The early-exit paths, taken when the two structures are
+        within distance_criterion, previously returned the coordinates object
+        itself, which callers then assigned straight back into .position """
+    position = np.array([0.7430002202, 0.2647603899, -0.0468575389,
+                        -0.7430002647, -0.2647604843, 0.0468569750,
+                         0.1977276118, -0.4447220146, 0.6224700350,
+                        -0.1977281310, 0.4447221826, -0.6224697723,
+                        -0.1822009635, 0.5970484122, 0.4844363476,
+                         0.1822015272, -0.5970484858, -0.4844360463])
+    atom_labels = ['C', 'C', 'C', 'C', 'O', 'O']
+    similarity = MolecularSimilarity(0.1, 0.05, weighted=False)
+
+    # Structures within distance_criterion, so an early return is taken
+    coords = AtomicCoordinates(atom_labels, position.copy())
+    same = similarity.random_rotation(position.copy())
+    dist, c1, c2, permutation = similarity.optimal_alignment(coords, same)
+    assert dist < similarity.distance_criterion
+    assert isinstance(c1, np.ndarray)
+
+    # Structures far apart, so the final return is taken
+    coords = AtomicCoordinates(atom_labels, position.copy())
+    different = position.copy()
+    different[0] += 3.0
+    dist, c1, c2, permutation = similarity.optimal_alignment(coords, different)
+    assert dist > similarity.distance_criterion
+    assert isinstance(c1, np.ndarray)
