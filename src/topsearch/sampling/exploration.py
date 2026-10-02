@@ -404,13 +404,23 @@ class NetworkSampling:
             self.coords.position = minima_information[i][0]
             energy = minima_information[i][1]
             self.similarity.test_new_minimum(self.ktn, self.coords, energy)
-        for i in ts_information:
-            self.coords.position = i[0]
-            self.similarity.test_new_ts(self.ktn, self.coords, i[1], i[2],
-                                        i[3], i[4], i[5])
+        # A single transition state failing to reconverge should not abandon
+        # the whole landscape, so count them and carry on
+        fail_count = 0
+        for ct, i in enumerate(ts_information):
+            try:
+                self.coords.position = i[0]
+                self.similarity.test_new_ts(self.ktn, self.coords, i[1], i[2],
+                                            i[3], i[4], i[5])
+            except Exception:
+                self.logger.warning(
+                    f"Failed reconverging transition state {ct}",
+                    exc_info=True)
+                fail_count += 1
         end_time = timer()
-       
+
         self.logger.debug(f"{self.ktn.n_minima} distinct minima and "
-                        f"{self.ktn.n_ts} transition states after "
-                        f"reconvergence\nReconvergence completed in "
-                        f"{end_time - start_time}\n\n")
+                          f"{self.ktn.n_ts} transition states after "
+                          f"reconvergence\nReconvergence completed in "
+                          f"{end_time - start_time}\n"
+                          f"failed on {fail_count} transition states\n\n")

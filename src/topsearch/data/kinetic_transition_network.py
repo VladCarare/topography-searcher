@@ -46,13 +46,16 @@ class KineticTransitionNetwork:
     dump_suffix: default suffix for dump files
     """
 
-    def __init__(self, dump_path=os.getcwd(), dump_suffix="") -> None:
+    def __init__(self, dump_path: str | Path | None = None,
+                 dump_suffix: str = "") -> None:
         self.G = nx.MultiGraph()
         self.n_minima = 0
         self.n_ts = 0
         self.pairlist = np.empty((0, 2), dtype=int)
         self.initial_positions_attempted = []
-        self.dump_path = Path(dump_path)
+        # Resolved here rather than as a default argument, which would bind
+        # the working directory at import time
+        self.dump_path = Path.cwd() if dump_path is None else Path(dump_path)
         self.dump_suffix = dump_suffix
 
     def get_minimum_coords(self, minimum: int) -> NDArray:
@@ -136,7 +139,7 @@ class KineticTransitionNetwork:
         self.n_ts = 0
         self.pairlist = np.empty((0, 2), dtype=int)
 
-    def dump_network(self, text_string: str = '', text_path: str ='') -> None:
+    def dump_network(self, *, text_string: str = '', text_path: str = '') -> None:
         """
         Write network to text files:
         min.data stores the index and energy.
@@ -158,7 +161,7 @@ class KineticTransitionNetwork:
         for i in range(self.n_minima):
             e = self.G.nodes[i]['energy']
             if not hasattr(e, '__iter__'):
-                    e = [e]
+                e = [e]
             minima_data = np.append(
                 minima_data, [[i, e[0]]], axis=0)
             minima_coords = np.append(
@@ -182,7 +185,7 @@ class KineticTransitionNetwork:
         np.savetxt(dump_dir / f"pairlist{text_string}", self.pairlist, fmt='%i')
         np.savetxt(dump_dir / f"attempted.coords{text_string}", self.get_attempted_positions())
 
-    def read_network(self, text_path: str = '', text_string: str = '') -> None:
+    def read_network(self, *, text_path: str = '', text_string: str = '') -> None:
         """ Returns G network from files that resulted from dump_network """
         if text_string == '':
             text_string = self.dump_suffix

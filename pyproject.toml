@@ -31,6 +31,16 @@ assertpy = "^1.1"
 torch = "^2.1.2"
 torchani = "^2.2.4"
 
+# Optional: only needed for topsearch.generation (SELFIES-TED latent space
+# sampling). Not required for energy landscape work.
+[tool.poetry.group.generation]
+optional = true
+
+[tool.poetry.group.generation.dependencies]
+transformers = "^4.38"
+selfies = "^2.1"
+torch = "^2.1.2"
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"

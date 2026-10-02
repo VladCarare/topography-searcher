@@ -73,7 +73,7 @@ class BasinHopping:
                         self.similarity.test_new_minimum(self.ktn, coords, ktn.get_minimum_energy(m))
                     except KeyError:
                         self.logger.error(f"Missing minimum index {m}. n_minima: {ktn.n_minima} Nodes in graph: {len(ktn.G.nodes)}.\n Keys: {ktn.G.nodes.keys()} ")
-                        ktn.dump_network("bad_minima")
+                        ktn.dump_network(text_string="bad_minima")
                 
                 self.ktn.add_attempted_position(position)
                 self.ktn.dump_network()
@@ -104,14 +104,21 @@ class BasinHopping:
             self.logger.debug(f"Step {i} of {n_steps}")
             #  Perturb coordinates
             self.step_taking.perturb(coords)
-            # Test for and remove atom clashes if density functional theory
-            if isinstance(self.potential, DensityFunctionalTheory):
-                coords.remove_atom_clashes(self.potential.force_field)
+            # Test for and remove atom clashes. The two coordinate classes
+            # take different arguments: MolecularCoordinates relaxes the clash
+            # with an empirical force field supplied by the potential, while
+            # AtomicCoordinates does it geometrically and takes none. Dispatch
+            # on the coordinates, since MolecularCoordinates subclasses
+            # AtomicCoordinates and would otherwise match the wrong branch.
+            force_field = getattr(self.potential, 'force_field', None)
+            if isinstance(coords, MolecularCoordinates):
+                if force_field is not None:
+                    coords.remove_atom_clashes(force_field)
+                else:
+                    self.logger.debug("No force field on the potential, "
+                                      "skipping clash removal")
             elif isinstance(coords, AtomicCoordinates):
-                try:
-                    coords.remove_atom_clashes()
-                except:
-                    pass # TODO: this was giving me an error with the MACE
+                coords.remove_atom_clashes()
             # Perform local minimisation
             if self.opt_method == 'scipy':
                 min_position, energy, results_dict = \

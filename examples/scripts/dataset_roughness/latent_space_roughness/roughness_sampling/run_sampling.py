@@ -114,7 +114,7 @@ def main():
                         ) 
 
     # %%
-    ktn2.dump_network(f".roughness")
+    ktn2.dump_network(text_string=".roughness")
 
 if __name__ == '__main__':
     main()

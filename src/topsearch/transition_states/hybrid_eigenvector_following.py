@@ -126,7 +126,7 @@ class HybridEigenvectorFollowing:
             self.take_uphill_step(coords, eigenvector, eigenvalue)
             self.logger.debug("coords after step: %s", coords.position)
             # If eigenvalue is below zero then minimise in orthogonal subspace
-            if eigenvalue < 0.0 and eig_steps < 5:
+            if eigenvalue < 0.0:# and eig_steps < 5:
                 subspace_pos, energy, results_dict = \
                     self.subspace_minimisation(coords, eigenvector)
                 coords.position = subspace_pos

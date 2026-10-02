@@ -3,6 +3,11 @@ import numpy as np
 from numpy.testing import assert_array_equal
 import pytest
 
+# The generation module is an optional extra: install with the `generation`
+# dependency group (transformers, selfies, torch) to run these tests.
+pytest.importorskip("transformers", reason="generation extra not installed")
+pytest.importorskip("selfies", reason="generation extra not installed")
+
 from topsearch.generation.generate_data import DataGenerator
 
 @pytest.fixture
