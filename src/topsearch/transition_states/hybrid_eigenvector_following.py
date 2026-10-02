@@ -65,6 +65,7 @@ class HybridEigenvectorFollowing:
                  max_uphill_step_size: float = 1.0,
                  positive_eigenvalue_step: float = 0.1,
                  eigenvalue_conv_crit: float = 1e-5,
+                 max_eig_steps_for_subspace: int = 5,
                  output_level: int = 0,
                  tag: str = '') -> None:
         self.potential = potential
@@ -75,6 +76,9 @@ class HybridEigenvectorFollowing:
         self.min_uphill_step_size = min_uphill_step_size
         self.positive_eigenvalue_step = positive_eigenvalue_step
         self.eigenvalue_conv_crit = eigenvalue_conv_crit
+        # Subspace minimisation is skipped while the uphill direction is
+        # still moving; see the use site. Set to None to always minimise.
+        self.max_eig_steps_for_subspace = max_eig_steps_for_subspace
         self.pushoff = pushoff
         self.eigenvector_bounds = None
         self.failure = None
@@ -135,7 +139,9 @@ class HybridEigenvectorFollowing:
             # LJ13 over 30 seeds, dropping this guard does not find a
             # different saddle - it exhausts ts_steps without converging 7
             # times instead of 1.
-            if eigenvalue < 0.0 and eig_steps < 5:
+            if eigenvalue < 0.0 and (self.max_eig_steps_for_subspace is None
+                                     or eig_steps <
+                                     self.max_eig_steps_for_subspace):
                 subspace_pos, energy, results_dict = \
                     self.subspace_minimisation(coords, eigenvector)
                 coords.position = subspace_pos

@@ -579,3 +579,15 @@ def test_run2():
     else:
         assert e_minus == pytest.approx(-44.3268014195, abs=1e-4)
         assert e_plus == pytest.approx(-41.4719798478, abs=1e-4)
+
+
+def test_max_eig_steps_for_subspace():
+    """ The subspace minimisation guard is configurable so its effect on
+        transition state yield can be measured without editing the source """
+    camel = Camelback()
+    hef = HybridEigenvectorFollowing(camel, 1e-4, 50, 5e-1)
+    assert hef.max_eig_steps_for_subspace == 5
+    # None restores the unguarded behaviour of mlp_run commit 25f053f
+    hef = HybridEigenvectorFollowing(camel, 1e-4, 50, 5e-1,
+                                     max_eig_steps_for_subspace=None)
+    assert hef.max_eig_steps_for_subspace is None
