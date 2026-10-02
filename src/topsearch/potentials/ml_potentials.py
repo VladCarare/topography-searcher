@@ -46,7 +46,6 @@ class MachineLearningPotential(Potential):
         # Set up the calculator based on the specified type
         if self.calculator_type == 'torchani':
             import torchani, torch
-            import torch
             torch.set_default_dtype(torch.float64)
             self.model = torchani.models.ANI2x(periodic_table_index=True)
             self.atoms.calc = \
@@ -100,6 +99,10 @@ class MachineLearningPotential(Potential):
                 warnings.warn("Aimnet2 ignores 'device' argument")
             self.atoms.calc = \
                 AIMNet2ASE(model)
+        else:
+            raise ValueError(
+                f"Unknown calculator_type {calculator_type!r}. Expected one "
+                "of: torchani, mace, mace-mp-0b3, nequip, so3lr, aimnet2")
 
     def function(self, position: NDArray) -> float:
         """ Compute the electronic potential energy """
