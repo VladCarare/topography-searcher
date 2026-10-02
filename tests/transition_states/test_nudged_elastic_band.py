@@ -1,3 +1,22 @@
+"""Nudged elastic band tests.
+
+test_dihedral_interpolation2 and 3 fail on a real defect rather than a
+stale reference. Both stretch a C-O bond by 0.3 A, from 1.43 to 1.86 A.
+Bond perception uses ase natural_cutoffs at the default mult=1.0 plus a
+0.2 skin, which puts the C-O threshold at 1.62 A, so the stretched bond
+stops being perceived as a bond, the molecule is seen as two fragments,
+and change_dihedral_angles raises
+
+    networkx.exception.NetworkXError: The edge 0-2 is not in the graph
+
+from inside get_movable_atoms. This fires during real runs too: NEB
+interpolates between minima whose bonds are stretched, which is the
+whole point near a transition state. Raising mult to 1.2 lifts the
+threshold to 1.90 A and fixes both tests, but breaks ten
+dihedral_similarity tests, so the threshold is a trade-off to settle
+deliberately rather than a value to nudge.
+"""
+
 import pytest
 import numpy as np
 import matplotlib.pyplot as plt
