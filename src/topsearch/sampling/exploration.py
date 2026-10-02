@@ -259,9 +259,12 @@ class NetworkSampling:
 
     def check_pair(self, node1: int, node2: int) -> tuple[bool, int]:
         """ Determines if a connection between this pair should be tried again.
-            Could have already been attempted too many times or
-            already have a transition state. Return logical
-            that determines if pair should be attempted """
+            Attempts are limited by max_connection_attempts_per_pair. A pair
+            that already has a transition state is still eligible: two minima
+            can be joined by several distinct transition states, which the
+            network stores as parallel edges, and refusing to retry such a
+            pair caps how many of them a single run can ever find. Return
+            logical that determines if pair should be attempted """
 
         # Calculate the number of times this pair has been tried
         repeats = 0
@@ -275,10 +278,6 @@ class NetworkSampling:
         #  Only try three times before giving up
         elif repeats >= self.max_connection_attempts_per_pair:
             self.logger.info("Connection attempted too many times.")
-            return False, repeats
-        # Don't repeat connections that are already directly connected
-        if self.ktn.G.has_edge(node1, node2):
-            self.logger.info("Nodes already connected by transition state\n")
             return False, repeats
         # Avoid connections between minimum and itself
         if node1 == node2:

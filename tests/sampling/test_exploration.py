@@ -112,18 +112,42 @@ def test_check_pair():
     ktn.read_network(text_path=f'{current_dir}/test_data/',
                      text_string='.sampling')
     sampler = NetworkSampling(ktn, None, None, None, None, None)
+    # A minimum cannot be connected to itself
     good, reps = sampler.check_pair(4, 4)
     assert good == False
     assert reps == 0
+    # Already joined by a transition state, but the attempt budget is unused.
+    # Allowed, because a second distinct transition state may exist between
+    # the same pair and is stored as a parallel edge
     good, reps = sampler.check_pair(3, 6)
-    assert good == False
+    assert good == True
     assert reps == 0
+    # Attempted once, under the limit
     good, reps = sampler.check_pair(0, 2)
     assert good == True
     assert reps == 1
+    # Attempted too many times
     good, reps = sampler.check_pair(0, 3)
     assert good == False
     assert reps == 4
+
+def test_check_pair_allows_second_transition_state():
+    """ An existing edge must not consume the attempt budget. Two minima can
+        be joined by several distinct transition states, stored as parallel
+        edges, so only the attempt count may refuse a pair. """
+    ktn = KineticTransitionNetwork()
+    ktn.read_network(text_path=f'{current_dir}/test_data/',
+                     text_string='.sampling')
+    sampler = NetworkSampling(ktn, None, None, None, None, None)
+    assert ktn.G.has_edge(3, 6)
+    # Already connected, but no attempts spent on this pair yet
+    assert sampler.check_pair(3, 6) == (True, 0)
+    # Spending the budget is what refuses it, not the existing edge
+    for _ in range(sampler.max_connection_attempts_per_pair):
+        ktn.pairlist = np.append(ktn.pairlist, [[3, 6]], axis=0)
+    good, reps = sampler.check_pair(3, 6)
+    assert good == False
+    assert reps == sampler.max_connection_attempts_per_pair
 
 def test_write_connection_attempt():
     ktn = KineticTransitionNetwork()
@@ -191,7 +215,9 @@ def test_prepare_connection_attempt():
     ktn.read_network(text_path=f'{current_dir}/test_data/',
                      text_string='.sampling')
     sampler = NetworkSampling(ktn, None, None, None, None, similarity)
-    min1, min2, reps, perm = sampler.prepare_connection_attempt(coords, [0, 1])
+    # Pair 0-3 has used its full attempt budget, so is refused. An existing
+    # edge no longer refuses a pair, only the attempt count does
+    min1, min2, reps, perm = sampler.prepare_connection_attempt(coords, [0, 3])
     assert min1 == None
     assert min2 == None
     
