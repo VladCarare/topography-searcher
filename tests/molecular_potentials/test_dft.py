@@ -1,12 +1,20 @@
+import os
 import pytest
 import numpy as np
 import ase
+import ase.io
+
+# DensityFunctionalTheory drives psi4, which is an optional dependency
+pytest.importorskip("psi4", reason="psi4 not installed")
+
 from topsearch.potentials.dft import DensityFunctionalTheory
 from topsearch.potentials.force_fields import MMFF94
 
+current_dir = os.path.dirname(os.path.dirname((os.path.realpath(__file__))))
+
 def test_dft_energy():
-    atoms = ase.io.read('ethanol.xyz')
-    ff = MMFF94('ethanol.xyz')
+    atoms = ase.io.read(f'{current_dir}/test_data/ethanol.xyz')
+    ff = MMFF94(f'{current_dir}/test_data/ethanol.xyz')
     species = atoms.get_chemical_symbols()
     position = atoms.get_positions().flatten()
     options = {"method": 'pbe',
@@ -19,8 +27,8 @@ def test_dft_energy():
     assert energy == pytest.approx(-4210.120823638515)
 
 def test_dft_energy2():
-    atoms = ase.io.read('ethanol.xyz')
-    ff = MMFF94('ethanol.xyz')
+    atoms = ase.io.read(f'{current_dir}/test_data/ethanol.xyz')
+    ff = MMFF94(f'{current_dir}/test_data/ethanol.xyz')
     species = atoms.get_chemical_symbols()
     position = atoms.get_positions().flatten()
     options = {"method": 'b3lyp',
@@ -33,8 +41,8 @@ def test_dft_energy2():
     assert energy == pytest.approx(-4220.118524903629)
 
 def test_dft_energy3():
-    atoms = ase.io.read('ethanol.xyz')
-    ff = MMFF94('ethanol.xyz')
+    atoms = ase.io.read(f'{current_dir}/test_data/ethanol.xyz')
+    ff = MMFF94(f'{current_dir}/test_data/ethanol.xyz')
     species = atoms.get_chemical_symbols()
     position = atoms.get_positions().flatten()
     options = {"method": 'b3lyp',
@@ -48,8 +56,8 @@ def test_dft_energy3():
     assert energy == pytest.approx(1000.0)
 
 def test_reset_options():
-    atoms = ase.io.read('ethanol.xyz')
-    ff = MMFF94('ethanol.xyz')
+    atoms = ase.io.read(f'{current_dir}/test_data/ethanol.xyz')
+    ff = MMFF94(f'{current_dir}/test_data/ethanol.xyz')
     species = atoms.get_chemical_symbols()
     position = atoms.get_positions().flatten()
     options = {"method": 'pbe',
@@ -68,8 +76,8 @@ def test_reset_options():
     assert energy == pytest.approx(-4220.118524903629)
 
 def test_dft_gradient():
-    atoms = ase.io.read('ethanol.xyz')
-    ff = MMFF94('ethanol.xyz')
+    atoms = ase.io.read(f'{current_dir}/test_data/ethanol.xyz')
+    ff = MMFF94(f'{current_dir}/test_data/ethanol.xyz')
     species = atoms.get_chemical_symbols()
     position = atoms.get_positions().flatten()
     options = {"method": 'b3lyp',
@@ -82,8 +90,8 @@ def test_dft_gradient():
     assert np.all(np.abs(grad < 0.7))
 
 def test_dft_gradient2():
-    atoms = ase.io.read('ethanol.xyz')
-    ff = MMFF94('ethanol.xyz')
+    atoms = ase.io.read(f'{current_dir}/test_data/ethanol.xyz')
+    ff = MMFF94(f'{current_dir}/test_data/ethanol.xyz')
     species = atoms.get_chemical_symbols()
     position = atoms.get_positions().flatten()
     options = {"method": 'b3lyp',
@@ -97,8 +105,8 @@ def test_dft_gradient2():
     assert np.all(grad > 1e20)
 
 def test_dft_energy_gradient():
-    atoms = ase.io.read('ethanol.xyz')
-    ff = MMFF94('ethanol.xyz')
+    atoms = ase.io.read(f'{current_dir}/test_data/ethanol.xyz')
+    ff = MMFF94(f'{current_dir}/test_data/ethanol.xyz')
     species = atoms.get_chemical_symbols()
     position = atoms.get_positions().flatten()
     options = {"method": 'b3lyp',
@@ -112,8 +120,8 @@ def test_dft_energy_gradient():
     assert np.all(np.abs(grad) < 0.7)
 
 def test_dft_energy_gradient2():
-    atoms = ase.io.read('ethanol.xyz')
-    ff = MMFF94('ethanol.xyz')
+    atoms = ase.io.read(f'{current_dir}/test_data/ethanol.xyz')
+    ff = MMFF94(f'{current_dir}/test_data/ethanol.xyz')
     species = atoms.get_chemical_symbols()
     position = atoms.get_positions().flatten()
     options = {"method": 'b3lyp',

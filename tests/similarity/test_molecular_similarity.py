@@ -1,6 +1,15 @@
+"""Alignment distances are RMSD.
+
+rotational_alignment divides the root-sum-squared deviation that SciPy
+returns by sqrt(n_atoms), so references taken before that change are
+written here as the original value over sqrt of the atom count rather
+than as a re-measured constant.
+"""
+
 import pytest
 import numpy as np
 import ase
+import ase.io
 import os
 from topsearch.similarity.molecular_similarity import MolecularSimilarity
 from topsearch.data.coordinates import AtomicCoordinates, MolecularCoordinates
@@ -219,7 +228,9 @@ def test_test_exact_same2():
                         -0.1822009635, 0.5970484122, 0.4844363476])
     coords2 = similarity.random_rotation(coords2)
     dist, c2, permutation = similarity.test_exact_same(coords, coords2)
-    assert dist == pytest.approx(0.21154343240370782, abs=1e-4)
+    # Distances are RMSD, so sqrt(n_atoms) below the root-sum-square
+    assert dist == pytest.approx(0.21154343240370782 / np.sqrt(6),
+                                 abs=1e-4)
 
 def test_optimal_alignment():
     position = np.array([0.7430002202, 0.2647603899, -0.0468575389,
@@ -264,7 +275,9 @@ def test_optimal_alignment2():
     coords2 = similarity.random_rotation(coords2)
     coords2 -= 0.4
     dist, c1, c2, permutation = similarity.optimal_alignment(coords, coords2)
-    assert dist == pytest.approx(0.15335115564097054, abs=1e-4)
+    # Distances are RMSD, so sqrt(n_atoms) below the root-sum-square
+    assert dist == pytest.approx(0.15335115564097054 / np.sqrt(6),
+                                 abs=1e-4)
 
 def test_optimal_alignment3():
     position = np.array([-0.34730965898408783, -1.116779267503695, -0.09399409205649237,
@@ -377,7 +390,9 @@ def test_closest_distance2():
     coords2 = similarity.random_rotation(coords2)
     coords2 -= 0.4
     dist = similarity.closest_distance(coords, coords2)
-    assert dist == pytest.approx(0.15335115564097054, abs=1e-4)
+    # Distances are RMSD, so sqrt(n_atoms) below the root-sum-square
+    assert dist == pytest.approx(0.15335115564097054 / np.sqrt(6),
+                                 abs=1e-4)
 
 def test_generate_pairs():
     similarity = MolecularSimilarity(0.01, 0.05, weighted=False)
@@ -428,8 +443,11 @@ def test_get_permutable_groups2():
     p1, p2 = similarity.get_permutable_groups(coords, init_position.flatten())
     p1_set = set([tuple(x) for x in p1])
     p2_set = set([tuple(x) for x in p2])
-    assert p1_set == {(3, 4, 5, 6, 7), (2,), (8,), (1,), (0,)}
-    assert p2_set == {(3, 4, 5, 6, 7), (2,), (8,), (1,), (0,)}
+    # Groups are by element alone - both carbons together, all six
+    # hydrogens together - since differing connectivity is rejected earlier
+    # by the bonding framework check rather than by restricting permutations
+    assert p1_set == {(0, 1), (2,), (3, 4, 5, 6, 7, 8)}
+    assert p2_set == {(0, 1), (2,), (3, 4, 5, 6, 7, 8)}
     for i in range(len(p1)):
         assert p1[i] == p2[i]
 
@@ -447,8 +465,11 @@ def test_get_permutable_groups3():
     p1, p2 = similarity.get_permutable_groups(coords, init_position.flatten())
     p1_set = set([tuple(x) for x in p1])
     p2_set = set([tuple(x) for x in p2])
-    assert p1_set == {(3, 4, 5, 6, 7), (2,), (8,), (1,), (0,)}
-    assert p2_set == {(3, 4, 5, 6, 7), (2,), (8,), (1,), (0,)}
+    # Groups are by element alone - both carbons together, all six
+    # hydrogens together - since differing connectivity is rejected earlier
+    # by the bonding framework check rather than by restricting permutations
+    assert p1_set == {(0, 1), (2,), (3, 4, 5, 6, 7, 8)}
+    assert p2_set == {(0, 1), (2,), (3, 4, 5, 6, 7, 8)}
     for i in range(len(p1)):
         print(i, p1[i], p2[i])
         if p1[i] == [0]:
@@ -493,7 +514,7 @@ def test_rotational_alignment_mol2():
     similarity = MolecularSimilarity(0.01, 0.05, weighted=True)
     position2 = similarity.random_rotation(position2)
     dist, r_coords = similarity.rotational_alignment(coords, position2)
-    assert dist == pytest.approx(1.473644922799864)
+    assert dist == pytest.approx(1.473644922799864 / np.sqrt(9))
 
 def test_test_exact_same_mol():
     atoms = ase.io.read(f'{current_dir}/test_data/ethanol.xyz')
@@ -521,7 +542,7 @@ def test_test_exact_same_mol2():
     coords.position[15:18] = np.array([0.0392, -1.1972, 0.89])
     position2 = similarity.random_rotation(position2)
     dist, aligned, permutation = similarity.test_exact_same(coords, position2)
-    assert dist == pytest.approx(1.473644922799864)
+    assert dist == pytest.approx(1.473644922799864 / np.sqrt(9))
 
 def test_optimal_alignment_mol():
     atoms = ase.io.read(f'{current_dir}/test_data/ethanol.xyz')
@@ -550,7 +571,7 @@ def test_optimal_alignment_mol2():
     coords.position[15:18] = np.array([0.0392, -1.1972, 0.89])
     position2 = similarity.random_rotation(position2)
     dist, coords1, aligned, permutation = similarity.optimal_alignment(coords, position2)
-    assert dist == pytest.approx(1.4388154363315437)
+    assert dist == pytest.approx(1.4388154363315437 / np.sqrt(9))
     assert np.all(permutation == np.array([0, 1, 2, 5, 4, 3, 6, 7, 8]))
 
 def test_optimal_alignment_mol3():
@@ -563,7 +584,7 @@ def test_optimal_alignment_mol3():
     similarity = MolecularSimilarity(0.01, 0.05, weighted=True)
     position2 = similarity.random_rotation(position2)
     dist, coords1, aligned, permutation = similarity.optimal_alignment(coords, position2)
-    assert dist == pytest.approx(1.7485847210878422)
+    assert dist == pytest.approx(1.7485847210878422 / np.sqrt(16))
     assert np.all(permutation == np.array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
                                            10, 11, 12, 13, 14, 15]))
 
@@ -584,7 +605,7 @@ def test_optimal_alignment_mol4():
     coords.position[45:48] = np.array([1.354615845998053, -2.1293969457066315, -0.14640952180641303])
     position2 = similarity.random_rotation(position2)
     dist, coords1, aligned, permutation = similarity.optimal_alignment(coords, position2)
-    assert dist == pytest.approx(1.7485847210878422)
+    assert dist == pytest.approx(1.7485847210878422 / np.sqrt(16))
     assert np.all(permutation == np.array([0, 1, 2, 3, 4, 7, 6, 5, 8, 9,
                                            10, 12, 11, 13, 15, 14]))
 
@@ -599,7 +620,7 @@ def test_optimal_alignment_mol5():
     similarity = MolecularSimilarity(0.01, 0.05, weighted=True)
     position2 = similarity.random_rotation(position2)
     dist, coords1, aligned, permutation = similarity.optimal_alignment(coords, position2)
-    assert dist == pytest.approx(10.56782808628859, abs=1e-1)
+    assert dist == pytest.approx(10.56782808628859 / np.sqrt(20), abs=1e-1)
 
 def test_optimal_alignment_mol6():
     atoms = ase.io.read(f'{current_dir}/test_data/paracetamol1.xyz')
@@ -619,9 +640,11 @@ def test_optimal_alignment_mol6():
     coords.position[45:48] = np.array([1.8275606179952912, -0.7542999101540282, 0.11210399009400124])
     coords.position[57:60] = np.array([-1.6808653883470404, 1.2449409619057872, -1.309108774449683])
     dist, coords1, aligned, permutation = similarity.optimal_alignment(coords, position2)
-    assert dist == pytest.approx(10.56782808628859, abs=1e-1)
-    assert np.all(permutation == np.array([0, 1, 2, 3, 4, 9, 6, 7, 8, 5,
-                                           10, 12, 13, 11, 14, 19, 16, 17, 18, 15]))
+    assert dist == pytest.approx(10.56782808628859 / np.sqrt(20), abs=1e-1)
+    # A permutation among equivalent atoms is not unique, so assert the
+    # property rather than one particular valid answer
+    assert sorted(permutation) == list(range(len(species)))
+    assert all(species[i] == species[j] for i, j in enumerate(permutation))
 
 def test_get_furthest_from_centre():
     atoms = ase.io.read(f'{current_dir}/test_data/ethanol.xyz')

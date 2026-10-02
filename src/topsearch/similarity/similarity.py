@@ -99,22 +99,30 @@ class StandardSimilarity:
         return bool((distance < self.distance_criterion) and
                     (energy_difference < self.energy_criterion))
 
+    def bonding_framework(self, coords: StandardCoordinates,
+                          position: NDArray) -> object:
+        """ Return a value identifying the bonding framework at position, or
+            None to compare every pair directly. Structures whose frameworks
+            differ cannot be the same stationary point, so this is a cheap
+            pre-filter before the full alignment in test_same. The base class
+            makes no assumption that the system is a molecule; see
+            MolecularSimilarity for the chemical version. """
+        return None
+
     def is_new_minimum(self, ktn: KineticTransitionNetwork, min_coords: StandardCoordinates,
                        min_energy: float) -> tuple[bool, NDArray]:
         """ Compare to all existing minima and add if different to all
         minima currently in network return True """
 
-        # Create reference mol and get reference SMILES 
-        ref_mol = create_mol_from_coordinates(min_coords.atom_labels, min_coords.position.reshape(-1,3))
-        rdDetermineBonds.DetermineConnectivity(ref_mol)
-        ref_smiles = Chem.MolToSmiles(ref_mol,allHsExplicit=True,allBondsExplicit=True)
-        
+        ref_framework = self.bonding_framework(min_coords,
+                                               min_coords.position)
+
         # Loop over all other minima and if same as any then do not add
         for i in range(ktn.n_minima):
-            test_mol = create_mol_from_coordinates(min_coords.atom_labels, ktn.get_minimum_coords(i).reshape(-1,3))
-            rdDetermineBonds.DetermineConnectivity(test_mol)
-            test_smiles = Chem.MolToSmiles(test_mol,allHsExplicit=True,allBondsExplicit=True)
-            if test_smiles != ref_smiles:
+            if ref_framework is not None and \
+                    self.bonding_framework(
+                        min_coords,
+                        ktn.get_minimum_coords(i)) != ref_framework:
                 continue
 
             if self.test_same(min_coords,
@@ -129,18 +137,16 @@ class StandardSimilarity:
         """ Compare transition state to all other currently in the network G
             and return False if same as any of them """
 
-        # Create reference mol and get reference SMILES 
-        ref_mol = create_mol_from_coordinates(ts_coords.atom_labels, ts_coords.position.reshape(-1,3))
-        rdDetermineBonds.DetermineConnectivity(ref_mol)
-        ref_smiles = Chem.MolToSmiles(ref_mol,allHsExplicit=True,allBondsExplicit=True)
+        ref_framework = self.bonding_framework(ts_coords, ts_coords.position)
 
         # Loop over all transition states, including cases of multiple TS per pair of nodes
         for node1, node2, edge_index in ktn.G.edges:
 
-            test_mol = create_mol_from_coordinates(ts_coords.atom_labels, ktn.get_ts_coords(node1, node2, edge_index).reshape(-1,3))
-            rdDetermineBonds.DetermineConnectivity(test_mol)
-            test_smiles = Chem.MolToSmiles(test_mol,allHsExplicit=True,allBondsExplicit=True)
-            if test_smiles != ref_smiles:
+            if ref_framework is not None and \
+                    self.bonding_framework(
+                        ts_coords,
+                        ktn.get_ts_coords(node1, node2,
+                                          edge_index)) != ref_framework:
                 continue
 
             # Check if each transition state is a match

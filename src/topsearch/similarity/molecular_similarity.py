@@ -10,8 +10,11 @@ from scipy.optimize import linear_sum_assignment
 from scipy.spatial import distance_matrix
 from scipy.spatial.transform import Rotation as rotations
 
+from rdkit import Chem
+from rdkit.Chem import rdDetermineBonds
+
 from topsearch.data.coordinates import MolecularCoordinates
-from .similarity import StandardSimilarity
+from .similarity import StandardSimilarity, create_mol_from_coordinates
 
 
 class MolecularSimilarity(StandardSimilarity):
@@ -39,6 +42,16 @@ class MolecularSimilarity(StandardSimilarity):
         Flag that specifies if we consider conformations related by the
         inversion operation as the same
     """
+
+    def bonding_framework(self, coords: MolecularCoordinates,
+                          position: NDArray) -> str:
+        """ Identify the conformation by its canonical SMILES, so that
+            structures bonded differently are never compared atom by atom """
+        mol = create_mol_from_coordinates(coords.atom_labels,
+                                          position.reshape(-1, 3))
+        rdDetermineBonds.DetermineConnectivity(mol)
+        return Chem.MolToSmiles(mol, allHsExplicit=True,
+                                allBondsExplicit=True)
 
     def __init__(self, distance_criterion: float, energy_criterion: float,
                  weighted: bool = False, allow_inversion: bool = False):
