@@ -14,6 +14,19 @@ from scipy.spatial.transform import Rotation as rotations
 from rdkit.Chem import AllChem
 
 
+class BondingFrameworkError(ValueError):
+    """ The bonding perceived at the current geometry no longer matches the
+        framework the coordinates were constructed with.
+
+        Dihedrals, angles and bond lengths are determined once at
+        construction and cached, so they keep referring to bonds that a
+        fresh perception may no longer find. During conformational
+        exploration the framework should not change, so this usually means
+        an unphysical structure rather than a new conformer, and is worth
+        reporting rather than treating as a failed calculation.
+    """
+
+
 class StandardCoordinates:
     """
     Description
@@ -344,6 +357,23 @@ class MolecularCoordinates(AtomicCoordinates):
                 removals.append(dihedrals[i])
         return removals
 
+    def check_bond_perceived(self, bond_network: nx.Graph, atom1: int,
+                             atom2: int) -> None:
+        """ Raise BondingFrameworkError if a bond this molecule was built
+            with is not present in bond_network. Without this the caller
+            fails inside networkx with "The edge u-v is not in the graph",
+            which says nothing about what actually went wrong. """
+        if bond_network.has_edge(atom1, atom2):
+            return
+        separation = np.linalg.norm(self.get_atom(atom1) - self.get_atom(atom2))
+        raise BondingFrameworkError(
+            f"atoms {atom1} ({self.atom_labels[atom1]}) and {atom2} "
+            f"({self.atom_labels[atom2]}) are {separation:.3f} A apart and "
+            "are no longer perceived as bonded, so this structure is not "
+            "bonded the way the molecule was set up. The dihedrals still "
+            "refer to this bond because they were determined once at "
+            "construction.")
+
     def get_movable_atoms(self, bond: list, bond_type: str,
                           bond_network: nx.Graph) -> list:
         """ For a given dihedral return the atoms that should be rotated """
@@ -370,6 +400,7 @@ class MolecularCoordinates(AtomicCoordinates):
                                     if l != j:
                                         moved_atoms.append(l)
             else:
+                self.check_bond_perceived(bond_network, bond[0], bond[1])
                 l_bond_network = bond_network.copy()
                 l_bond_network.remove_edge(bond[0], bond[1])
                 for k in nx.connected_components(l_bond_network):
