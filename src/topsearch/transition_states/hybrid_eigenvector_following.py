@@ -125,11 +125,16 @@ class HybridEigenvectorFollowing:
             # Take a step following the eigenvector uphill
             self.take_uphill_step(coords, eigenvector, eigenvalue)
             self.logger.debug("coords after step: %s", coords.position)
-            # If eigenvalue is below zero then minimise in orthogonal
-            # subspace. eig_steps >= 5 means the eigenvector itself is poorly
-            # converged, and minimising orthogonal to a bad eigenvector walks
-            # off the ridge: dropping this guard makes the LJ13 search in
-            # test_run2 reach the wrong stationary point 7 times in 20.
+            # If eigenvalue is below zero then minimise in the subspace
+            # orthogonal to the uphill direction, but only once that
+            # direction has settled. eig_steps is how many iterations the
+            # eigenvector search needed, warm-started from the previous
+            # step's vector, so a high count means the lowest mode is still
+            # moving. Projecting onto a direction that is about to change
+            # makes the outer loop thrash rather than climb. Measured on
+            # LJ13 over 30 seeds, dropping this guard does not find a
+            # different saddle - it exhausts ts_steps without converging 7
+            # times instead of 1.
             if eigenvalue < 0.0 and eig_steps < 5:
                 subspace_pos, energy, results_dict = \
                     self.subspace_minimisation(coords, eigenvector)
