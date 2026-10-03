@@ -9,6 +9,19 @@ from ase.units import Hartree
 from .potential import Potential
 
 
+
+def _as_energy(value) -> float:
+    """ Return a scalar energy.
+
+        Some ase calculators, AIMNet2 among them, report the energy as a
+        one element array. The rest of topsearch stores it in the network
+        and compares it as a number, and np.append builds a ragged array
+        from a mix of the two, so normalise here where the calculator is
+        known rather than guarding at every use.
+    """
+    return float(np.asarray(value).reshape(-1)[0])
+
+
 class MachineLearningPotential(Potential):
     """
     Description
@@ -117,7 +130,7 @@ class MachineLearningPotential(Potential):
                                        dtype=torch.float32,
                                        requires_grad=True).unsqueeze(0).to(self.device)
             energy = self.model((species, coordinates)).energies.item() * Hartree
-        return energy
+        return _as_energy(energy)
 
     def function_gradient(self, position: NDArray) -> tuple:
         """ Compute the electronic potential energy and its forces """
@@ -145,7 +158,7 @@ class MachineLearningPotential(Potential):
                                                  coordinates)[0]
             energy = energy_torch.item()
             gradient = np.array(gradient_torch.flatten().tolist())
-        return energy, gradient
+        return _as_energy(energy), gradient
 
     def gradient(self, position: NDArray) -> NDArray:
         """ Compute the analytical gradient from the ASE calculator """

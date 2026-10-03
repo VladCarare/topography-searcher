@@ -84,3 +84,26 @@ def test_unknown_calculator_is_rejected():
     with pytest.raises(Exception):
         MachineLearningPotential(atom_labels=species,
                                  calculator_type='not-a-real-model')
+
+
+def test_energy_is_a_scalar():
+    """ Some ase calculators report the energy as a one element array.
+        KineticTransitionNetwork.dump_network builds a ragged array from a
+        mix of scalars and arrays and fails with "setting an array element
+        with a sequence", so the potential must hand back a number. """
+    atoms = ase.io.read(f'{current_dir}/test_data/ethanol.xyz')
+    species = atoms.get_chemical_symbols()
+    position = atoms.get_positions().flatten()
+    mlp = MachineLearningPotential(atom_labels=species,
+                                   calculator_type='torchani')
+    assert isinstance(mlp.function(position), float)
+    energy, _ = mlp.function_gradient(position)
+    assert isinstance(energy, float)
+
+
+def test_as_energy_accepts_array_and_scalar():
+    """ Covers the AIMNet2 shape without needing AIMNet2 installed """
+    from topsearch.potentials.ml_potentials import _as_energy
+    assert _as_energy(np.array([-13506.94237821])) == pytest.approx(-13506.94237821)
+    assert _as_energy(-13506.94237821) == pytest.approx(-13506.94237821)
+    assert isinstance(_as_energy(np.array([1.0])), float)
