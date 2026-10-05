@@ -81,7 +81,7 @@ We provide several examples to illustrate the tasks that TopSearch can perform i
 
 ## Contributors
 
-This package is written and maintained by Luke Dicks at IBM Research as part of the AI-Enriched Simulation team. Please contact Luke (<luke.dicks@ibm.com>) or Edward Pyzer-Knapp (<EPyzerK3@uk.ibm.com>) for questions about how to use and/or contribute.
+This package was written and maintained by Luke Dicks and Vlad Cărare at IBM Research as part of the AI-Enriched Simulation team. 
 
 ## License
 
