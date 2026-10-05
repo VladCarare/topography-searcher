@@ -258,13 +258,24 @@ class NetworkSampling:
         return min1, min2, repeats, permutation
 
     def check_pair(self, node1: int, node2: int) -> tuple[bool, int]:
-        """ Determines if a connection between this pair should be tried again.
-            Attempts are limited by max_connection_attempts_per_pair. A pair
-            that already has a transition state is still eligible: two minima
-            can be joined by several distinct transition states, which the
-            network stores as parallel edges, and refusing to retry such a
-            pair caps how many of them a single run can ever find. Return
-            logical that determines if pair should be attempted """
+        """ Determines if a connection between this pair should be tried
+            again. Attempts are limited by max_connection_attempts_per_pair.
+            A pair that already has a transition state is still eligible,
+            since two minima can be joined by several distinct transition
+            states, which the network stores as parallel edges.
+
+            Measured effect, salicylic acid with AIMNet2, matched on
+            starting structure and seed, against refusing such a pair:
+
+                cycles=2, 15 runs    89 -> 90 transition states  (+1%)
+                cycles=4, 18 runs   143 -> 148                   (+3%)
+
+            Minima were identical in both comparisons and runtimes agreed
+            within a few percent. Parallel edges are mostly reachable
+            either way, because one connection attempt converges several
+            NEB candidates and tests each, so this is a small gain rather
+            than the removal of a hard limit. Return logical that
+            determines if pair should be attempted """
 
         # Calculate the number of times this pair has been tried
         repeats = 0
