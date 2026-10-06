@@ -505,3 +505,43 @@ def test_reconverge_landscape():
     assert np.all(ktn.get_ts_coords(2, 4) == pytest.approx(np.array([ 1.10920525, -0.76826793]), abs=1e-4))
     assert np.all(ktn.get_ts_coords(2, 5) == pytest.approx(np.array([-1.29606974, -0.60508394]), abs=1e-4))
     assert np.all(ktn.get_ts_coords(3, 4) == pytest.approx(np.array([1.63806798, 0.22867407]), abs=1e-4))
+
+
+def test_neighbours_replaces_cycles():
+    """ cycles was a misleading name: select_minima runs once and the
+        argument sets how many nearest neighbours each minimum is paired
+        with. The old name still works but warns, and gives the same
+        result as the new one. """
+    def run(**kwargs):
+        similarity = StandardSimilarity(0.1, 0.1)
+        coords = StandardCoordinates(ndim=2, bounds=[(-3.0, 3.0), (-2.0, 2.0)])
+        ktn = KineticTransitionNetwork()
+        ktn.read_network(text_path=f'{current_dir}/test_data/',
+                         text_string='.sampling2')
+        camel = Camelback()
+        sampler = NetworkSampling(ktn, coords, None,
+                                  HybridEigenvectorFollowing(camel, 1e-5, 50, 5e-1),
+                                  NudgedElasticBand(camel, 50.0, 4.0, 50, 1e-2),
+                                  similarity)
+        sampler.get_transition_states('ClosestEnumeration', **kwargs)
+        return ktn.n_minima, ktn.n_ts
+
+    with pytest.deprecated_call():
+        deprecated = run(cycles=2)
+    assert run(neighbours=2) == deprecated
+
+
+def test_neighbours_beyond_n_minima_adds_no_pairs():
+    """ Once every minimum is paired with every other, raising neighbours
+        cannot add anything. This is why runs saturate. """
+    from topsearch.analysis.pair_selection import closest_enumeration
+    ktn = KineticTransitionNetwork()
+    ktn.read_network(text_path=f'{current_dir}/test_data/',
+                     text_string='.sampling')
+    coords = StandardCoordinates(ndim=3, bounds=[(-5.0, 5.0)] * 3)
+    similarity = StandardSimilarity(0.1, 0.1)
+    complete = closest_enumeration(ktn, similarity, coords, ktn.n_minima - 1)
+    for beyond in (ktn.n_minima, ktn.n_minima * 4):
+        assert closest_enumeration(ktn, similarity, coords, beyond) == complete
+    # and a small value really does leave pairs unexplored
+    assert len(closest_enumeration(ktn, similarity, coords, 1)) < len(complete)

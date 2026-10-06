@@ -7,6 +7,8 @@ import os
 from timeit import default_timer as timer
 import multiprocessing
 from copy import deepcopy
+import warnings
+
 import numpy as np
 from nptyping import NDArray
 
@@ -114,13 +116,38 @@ class NetworkSampling:
                                              coords)
             self.ktn.remove_minima(invalid_min)
 
-    def get_transition_states(self, method: str, cycles: int,
+    def get_transition_states(self, method: str, neighbours: int = 2,
                               remove_bounds_minima: bool = False,
-                              all_bounds: bool = False) -> None:
+                              all_bounds: bool = False,
+                              cycles: int = None) -> None:
         """ Default algorithm for generating a landscape from a set of minima.
             Combines different sampling methods in sequence to find transition
             states between minima and produce a fully connected network.
-            Updates the ktn.G network with any new transition states """
+            Updates the ktn.G network with any new transition states
+
+            Parameters
+            ----------
+            method : str
+                Pair selection scheme, see select_minima
+            neighbours : int
+                How many nearest neighbours each minimum is paired with. Pair
+                selection runs once, not in a loop, so this is the whole
+                extent of the search: once neighbours reaches n_minima - 1
+                every pair has been enumerated and raising it further changes
+                nothing at all, runtime included. A value well below the
+                number of minima leaves most pairs never attempted.
+            cycles : int
+                Deprecated former name for neighbours. It suggested repeated
+                rounds, which is not what the argument does.
+        """
+
+        if cycles is not None:
+            warnings.warn(
+                "get_transition_states(cycles=...) is deprecated: the "
+                "argument sets how many nearest neighbours each minimum is "
+                "paired with, not a number of rounds. Use neighbours=...",
+                DeprecationWarning, stacklevel=2)
+            neighbours = cycles
 
         # Remove any edge cases that are high in energy and not connected
         if remove_bounds_minima:
@@ -130,7 +157,7 @@ class NetworkSampling:
                 bounds_minima = get_bounds_minima(self.ktn, self.coords)
             self.ktn.remove_minima(bounds_minima)
         # Run a set of initial connections for all minima
-        pairs = self.select_minima(self.coords, method, cycles)
+        pairs = self.select_minima(self.coords, method, neighbours)
         self.run_connection_attempts(pairs)
         # Remove any additional bounds minima found during sampling
         if remove_bounds_minima:
