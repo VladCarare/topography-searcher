@@ -11,6 +11,18 @@ from nptyping import NDArray
 from topsearch.data.coordinates import AtomicCoordinates, MolecularCoordinates, StandardCoordinates
 
 
+def _own_generators(seed: int | None):
+    """A private pair of generators, seeded from the global ones when asked.
+
+    Taking the seed from the global generators keeps set_global_seed in
+    charge of reproducibility while isolating the stream, so that what any
+    other part of the search draws cannot shift these moves.
+    """
+    if seed is None:
+        seed = random.randrange(2 ** 32)
+    return random.Random(seed), np.random.default_rng(seed)
+
+
 class StandardPerturbation:
 
     """
@@ -32,7 +44,8 @@ class StandardPerturbation:
     """
 
     def __init__(self, max_displacement: float,
-                 proportional_distance: bool = False) -> None:
+                 proportional_distance: bool = False, seed: int | None = None) -> None:
+        self.generator, self.numpy_generator = _own_generators(seed)
         self.max_displacement = max_displacement
         self.proportional_distance = proportional_distance
 
@@ -49,7 +62,8 @@ class StandardPerturbation:
         """ Displace the given position by randomly up to specified size """
         step_sizes = self.set_step_sizes(coords)
         # Find perturbations relative to the total size of the space
-        perturbations = (np.random.rand(coords.ndim)-0.5)*step_sizes
+        perturbations = (self.numpy_generator.random(coords.ndim)
+                         - 0.5) * step_sizes
         # Apply the perturbations to the initial point, x
         coords.position += perturbations
         # If outside bounds then move back to corresponding bound
@@ -72,17 +86,18 @@ class AtomicPerturbation():
         The maximum number of atoms that can be perturbed at each call
     """
 
-    def __init__(self, max_displacement: float, max_atoms: int) -> None:
+    def __init__(self, max_displacement: float, max_atoms: int, seed: int | None = None) -> None:
+        self.generator, self.numpy_generator = _own_generators(seed)
         self.max_displacement = max_displacement
         self.max_atoms = max_atoms
 
     def perturb(self, coords: AtomicCoordinates) -> None:
         """ Returns coords perturbed by a displacement to up to max_atoms """
         # Select the max_atoms which are to be displaced
-        perturbed_atoms = random.sample(
+        perturbed_atoms = self.generator.sample(
             range(1, int(coords.ndim/3)), self.max_atoms)
         # Make a displacement vector drawn from uniform distribution
-        perturbations = (np.random.rand(self.max_atoms, 3) *
+        perturbations = (self.numpy_generator.random((self.max_atoms, 3)) *
                          self.max_displacement)-0.5*self.max_displacement
         # Add perturbations to the atoms that need to be moved
         for i in range(self.max_atoms):
@@ -108,19 +123,20 @@ class MolecularPerturbation():
         The maximum number of dihedrals that can be perturbed at each call
     """
 
-    def __init__(self, max_displacement: float, max_bonds: int) -> None:
+    def __init__(self, max_displacement: float, max_bonds: int, seed: int | None = None) -> None:
+        self.generator, self.numpy_generator = _own_generators(seed)
         self.max_displacement = max_displacement
         self.max_bonds = max_bonds
 
     def perturb(self, coords: MolecularCoordinates) -> None:
         """ Rotate about randomly selected bonds within a molecular system """
 
-        chosen_bonds = random.sample(coords.rotatable_dihedrals,
+        chosen_bonds = self.generator.sample(coords.rotatable_dihedrals,
                                      self.max_bonds)
         for i in chosen_bonds:
             bond_index = coords.rotatable_dihedrals.index(i)
             # Generate a random angle
-            random_angle = ((random.random()*2.0)-1.0) * self.max_displacement
+            random_angle = ((self.generator.random()*2.0)-1.0) * self.max_displacement
             # Find the atoms that need to be rotated
             moved_atoms = coords.rotatable_atoms[bond_index]
             # Apply the rotation

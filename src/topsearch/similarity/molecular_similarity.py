@@ -110,6 +110,30 @@ class MolecularSimilarity(StandardSimilarity):
         permuted_coords = coords2.reshape(-1,3)[permutation].flatten()
         return permuted_coords, permutation
 
+    def automorphism_alignment(self, coords1: MolecularCoordinates,
+                               coords2: NDArray,
+                               automorphisms: list) -> tuple:
+        """ Pick the relabelling of coords2 that sits closest to coords1 out
+            of those that leave the molecule unchanged.
+
+            Each candidate is scored after optimal rotation, since a
+            relabelling and a rotation together decide how far apart the two
+            conformations are. The rotation found here is discarded and
+            recomputed by the caller, which costs one extra alignment per
+            candidate and keeps this function's contract the same as the
+            Hungarian version it replaces.
+        """
+        best_permutation = None
+        best_distance = np.inf
+        for permutation in automorphisms:
+            candidate = coords2.reshape(-1, 3)[permutation].flatten()
+            distance, _ = self.rotational_alignment(coords1, candidate)
+            if distance < best_distance:
+                best_distance = distance
+                best_permutation = permutation
+        permuted_coords = coords2.reshape(-1, 3)[best_permutation].flatten()
+        return permuted_coords, list(best_permutation)
+
     def get_permutable_groups(self, coords1: MolecularCoordinates, coords2: NDArray) -> list:
         """ Determine the subsets of atoms that are allowed to be permuted
             when minimising the distance between conformations. Must be

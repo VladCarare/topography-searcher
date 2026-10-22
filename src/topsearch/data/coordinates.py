@@ -6,6 +6,7 @@
 
 import numpy as np
 import networkx as nx
+from networkx.algorithms import isomorphism
 from nptyping import NDArray
 from ase.geometry.analysis import Analysis
 from ase import neighborlist
@@ -223,8 +224,70 @@ class MolecularCoordinates(AtomicCoordinates):
         # Calculate reference properties to retain
         self.natural_cutoffs = neighborlist.natural_cutoffs(self.atoms)
         self.reference_bonds = self.get_bonds()
+        self.symmetry_classes = self.get_symmetry_classes()
+        self.automorphisms = self.get_automorphisms()
         self.get_rotatable_dihedrals()
         self.analysis = None
+
+    def get_automorphisms(self, limit: int = 256) -> list:
+        """ The relabellings of the atoms that leave the molecule unchanged.
+
+            A permutation is only meaningful as a correspondence between two
+            conformations if it maps every bond onto a bond. Exchanging two
+            hydrogens on the same carbon does; exchanging a hydrogen on a
+            carbon with one on an oxygen does not, and no motion can perform
+            it, so a path built towards it has to break bonds.
+
+            Returns an empty list if there are more than `limit` of them, so
+            that a highly symmetric system falls back to the unrestricted
+            alignment rather than spending unbounded time here.
+        """
+        graph = self.reference_bonds.copy()
+        for node in graph.nodes:
+            graph.nodes[node]['element'] = self.atom_labels[node]
+        matcher = isomorphism.GraphMatcher(
+            graph, graph,
+            node_match=isomorphism.categorical_node_match('element', None))
+        found = []
+        for mapping in matcher.isomorphisms_iter():
+            found.append([mapping[i] for i in range(self.n_atoms)])
+            if len(found) > limit:
+                return []
+        return found
+
+    def get_symmetry_classes(self) -> list:
+        """ Label each atom by its bonding environment, so that two atoms
+            share a label only if the molecule cannot tell them apart.
+
+            Two hydrogens on the same carbon are interchangeable; a
+            hydrogen on a carbon and a hydrogen on an oxygen are not, even
+            though both are hydrogen. Exchanging the latter pair is not a
+            symmetry of the molecule, so no motion can realise it, and
+            interpolating towards it tears the bonds apart.
+
+            Computed by repeatedly refining an initial labelling by
+            element: an atom's new label is its old one together with the
+            sorted labels of its neighbours, until the partition stops
+            changing. Atoms in different classes after this are certainly
+            distinguishable; atoms in the same class are interchangeable
+            for every practical molecular case.
+        """
+        labels = list(self.atom_labels)
+        for _ in range(self.n_atoms):
+            refined = [
+                (labels[i],
+                 tuple(sorted(labels[j] for j in
+                              self.reference_bonds.neighbors(i))))
+                if i in self.reference_bonds else (labels[i], ())
+                for i in range(self.n_atoms)
+            ]
+            # relabel to small integers so the strings cannot grow unbounded
+            ranks = {key: n for n, key in enumerate(sorted(set(refined)))}
+            new_labels = [ranks[key] for key in refined]
+            if new_labels == labels:
+                break
+            labels = new_labels
+        return labels
 
     def get_bonds(self) -> nx.Graph:
         """ Find the current bonding framework for self.position """

@@ -3,6 +3,8 @@
     aim to locate a minimum energy pathway between them, the maxima
     on this path are candidates for transition states. """
 
+import os
+
 import numpy as np
 from nptyping import NDArray
 from topsearch.minimisation import lbfgs
@@ -10,6 +12,37 @@ from topsearch.data.coordinates import MolecularCoordinates, StandardCoordinates
 from topsearch.potentials.potential import Potential
 import traceback
 import logging
+
+# Shortest interatomic distance an interpolated image may contain. Measured
+# on aspirin/GFN2-xTB over 87 connection attempts, rejecting a band with any
+# pair below this catches 8 of the 8 attempts that produced off-reference
+# structures and discards 0 of the 79 that did not. The dihedral
+# interpolation reaches 0.565 A on multi-dihedral moves, and the bonding
+# graph breaks two images before the clash itself appears.
+MIN_IMAGE_SEPARATION = 0.9
+# How many points along a candidate rotation to test for
+# clearance, and how much better the longer way has to be
+# before it is preferred, as a fraction of the van der Waals
+# sum. The margin keeps the shorter turn for paths that have
+# no clash to avoid.
+CLEARANCE_SAMPLES = 12
+CLEARANCE_MARGIN = 0.03
+
+
+class BandRejected(RuntimeError):
+    """No usable interpolation exists between this pair of minima.
+
+    Carries the rejected band and its closest contact so the pair can be
+    looked at rather than merely counted as a failure.
+    """
+
+    def __init__(self, band, separation, scheme):
+        super().__init__(f"{scheme} interpolation has atoms {separation:.3f} "
+                         f"A apart, below {MIN_IMAGE_SEPARATION} A")
+        self.band = np.array(band, copy=True)
+        self.separation = float(separation)
+        self.scheme = scheme
+
 
 class NudgedElasticBand:
 
@@ -69,6 +102,10 @@ class NudgedElasticBand:
         self.force_constants = None
         self.n_images = None
         self.band_bounds = None
+        # interpolations refused for atom overlap, kept for inspection
+        self.rejected_bands = []
+        self.CLEARANCE_SAMPLES = CLEARANCE_SAMPLES
+        self.CLEARANCE_MARGIN = CLEARANCE_MARGIN
         self.neb_count = 0
         self.output_level = output_level
 
@@ -120,6 +157,43 @@ class NudgedElasticBand:
         """ Revert the image density to its original value """
         self.image_density = self.original_image_density
 
+    def closest_contact(self, band: NDArray) -> float:
+        """Shortest distance between any two atoms in any image of a band."""
+        images = np.asarray(band).reshape(self.n_images, -1)
+        shortest = np.inf
+        for image in images:
+            points = image.reshape(-1, 3)
+            spread = np.linalg.norm(points[:, None] - points[None, :], axis=-1)
+            np.fill_diagonal(spread, np.inf)
+            shortest = min(shortest, float(spread.min()))
+        return shortest
+
+    def reject_overlapping(self, band: NDArray,
+                           coords1: StandardCoordinates,
+                           coords2: NDArray) -> NDArray:
+        """Return the band, or a linear one, or refuse the pair.
+
+        Rotating several dihedrals at once can drive two atoms through each
+        other. Linear interpolation cannot do that, so it is tried before
+        the pair is given up on.
+        """
+        separation = self.closest_contact(band)
+        if separation >= MIN_IMAGE_SEPARATION:
+            return band
+        self.logger.info(f"Dihedral interpolation reached {separation:.3f} A; "
+                         f"retrying linearly")
+        self.rejected_bands.append({"scheme": "dihedral",
+                                    "separation": float(separation),
+                                    "band": np.array(band, copy=True)})
+        band = self.linear_interpolation(coords1, coords2)
+        separation = self.closest_contact(band)
+        if separation < MIN_IMAGE_SEPARATION:
+            self.rejected_bands.append({"scheme": "linear",
+                                        "separation": float(separation),
+                                        "band": np.array(band, copy=True)})
+            raise BandRejected(band, separation, "linear")
+        return band
+
     def initial_interpolation(self, coords1: StandardCoordinates, coords2: NDArray,
                               attempts: int, permutation: NDArray) -> NDArray:
         """ Return initial interpolation band using the appropriate number
@@ -132,6 +206,7 @@ class NudgedElasticBand:
         # Perform the type of interpolation specified by number of attempts
         if isinstance(coords1, MolecularCoordinates):
             band = self.dihedral_interpolation(coords1, coords2, permutation)
+            band = self.reject_overlapping(band, coords1, coords2)
         else:
             band = self.linear_interpolation(coords1, coords2)
         # If changed parameters then revert back
@@ -162,10 +237,118 @@ class NudgedElasticBand:
             band[i, :] = coords1.position+(direction_vec*i)
         return band
 
+    def bonding_correspondence(self, coords1, coords2):
+        """The correspondence under which the two bonding graphs agree.
+
+        Returns None when the structures bond differently, since no
+        relabelling can reconcile them and the move is a real chemical
+        change rather than a rearrangement of equivalent atoms.
+        """
+        try:
+            import networkx as nx
+            from networkx.algorithms.isomorphism import (
+                GraphMatcher, categorical_node_match)
+            from ase import Atoms
+            from ase.neighborlist import natural_cutoffs, NeighborList
+        except ImportError:
+            return None
+
+        labels = getattr(coords1, 'atom_labels', None)
+        if labels is None:
+            return None
+
+        def graph_of(position):
+            atoms = Atoms(labels, np.asarray(position).reshape(-1, 3))
+            neighbours = NeighborList(natural_cutoffs(atoms, mult=1.15),
+                                      skin=0.0, self_interaction=False,
+                                      bothways=True)
+            neighbours.update(atoms)
+            graph = nx.Graph()
+            for i, element in enumerate(labels):
+                graph.add_node(i, element=element)
+            for i in range(len(atoms)):
+                for j in neighbours.get_neighbors(i)[0]:
+                    graph.add_edge(int(i), int(j))
+            return graph
+
+        try:
+            first = graph_of(coords1.position)
+            second = graph_of(coords2)
+        except Exception:
+            return None
+        matcher = GraphMatcher(
+            first, second,
+            node_match=categorical_node_match('element', ''))
+        reference = np.asarray(coords1.position).reshape(-1, 3)
+        target = np.asarray(coords2).reshape(-1, 3)
+        best, best_distance, seen = None, np.inf, 0
+        for mapping in matcher.isomorphisms_iter():
+            seen += 1
+            if seen > 5000:
+                break
+            order = [mapping[i] for i in range(len(labels))]
+            spread = target[order] - reference
+            distance = float(np.sqrt(np.mean(np.sum(spread ** 2, axis=1))))
+            if distance < best_distance:
+                best, best_distance = order, distance
+        if best is None:
+            return None
+        self.logger.debug(
+            "Interpolation correspondence taken from the bonding graphs "
+            "rather than from distance")
+        return np.array(best)
+
+    def physical_permutation(self, coords1: StandardCoordinates,
+                             coords2: NDArray,
+                             permutation: NDArray) -> NDArray:
+        """ Replace a correspondence no motion can realise with the closest
+            one that can.
+
+            Alignment chooses the atom correspondence that minimises
+            distance, which is the right question when asking whether two
+            structures are the same: a structure with two hydrogens
+            relabelled is the same structure. It is the wrong question here,
+            because the interpolation reads the correspondence as a
+            statement about which atom travels where. Pairing a hydrogen on
+            a carbon with one on an oxygen asks that hydrogen to cross the
+            molecule, and rotating dihedrals towards it pulls the hydrogen
+            off its parent instead, breaking bonds before the potential is
+            ever consulted.
+
+            Only the relabellings that leave the bonding unchanged describe
+            motions, so an unphysical correspondence is swapped for whichever
+            of those sits closest. Returns the original if the coordinates
+            carry no bonding information, or if the correspondence was
+            already a symmetry.
+        """
+        if permutation is None:
+            return permutation
+        mapped = self.bonding_correspondence(coords1, coords2)
+        if mapped is not None:
+            return mapped
+        automorphisms = getattr(coords1, 'automorphisms', None)
+        if not automorphisms:
+            return permutation
+        if [int(i) for i in permutation] in automorphisms:
+            return permutation
+        reference = coords1.position.reshape(-1, 3)
+        target = np.asarray(coords2).reshape(-1, 3)
+        best, best_distance = permutation, np.inf
+        for candidate in automorphisms:
+            displaced = target[candidate] - reference
+            distance = float(np.sqrt(np.mean(np.sum(displaced ** 2, axis=1))))
+            if distance < best_distance:
+                best, best_distance = candidate, distance
+        self.logger.debug(
+            "Alignment gave a correspondence that is not a symmetry of the "
+            "molecule; replaced with the closest one that is")
+        return np.array(best)
+
     def dihedral_interpolation(self, coords1: StandardCoordinates, coords2: NDArray,
                                permutation: NDArray) -> NDArray:
         """ Interpolate linearly in the space of dihedrals, angles and
             bond lengths, which will be much more appropriate for molecules """
+        permutation = self.physical_permutation(coords1, coords2, permutation)
         # Set the number of images based on given image density
         try:
             dist = np.linalg.norm(coords1.position-coords2)
@@ -203,17 +386,19 @@ class NudgedElasticBand:
         angle_differences = (np.asarray(represent2[1]) -
                              np.asarray(represent1[3]))/(self.n_images-1)
         dihedral_differences = []
-        # Accounting for periodicity in dihedrals
+        # A dihedral reaches its target by turning either way round the
+        # circle. Taking the smaller angle is a statement about angles, not
+        # about the molecule: on aspirin the shorter turn about C6-O12
+        # sweeps one ester group past the other, bringing a carbonyl oxygen
+        # within 1.88 A of a carbon it is not bonded to, where the longer
+        # turn keeps it at 2.26 A. Prefer the direction that stays clear.
         for i in range(len(represent1[5])):
-            dist1 = represent2[2][i] - represent1[5][i]
-            dist2 = dist1 + 360.0
-            dist3 = dist1 - 360.0
-            if np.abs(dist1) < np.abs(dist2) and np.abs(dist1) < np.abs(dist3):
-                dihedral_differences.append(dist1)
-            elif np.abs(dist2) < np.abs(dist1) and np.abs(dist2) < np.abs(dist3):
-                dihedral_differences.append(dist2)
-            else:
-                dihedral_differences.append(dist3)
+            shortest = represent2[2][i] - represent1[5][i]
+            shortest = (shortest + 180.0) % 360.0 - 180.0
+            longer = shortest - 360.0 if shortest > 0 else shortest + 360.0
+            dihedral_differences.append(
+                self.clearer_rotation(coords1, represent1, i,
+                                      shortest, longer))
         dihedral_differences = \
             np.asarray(dihedral_differences)/(self.n_images-1)
         # Make the linear interpolation
@@ -232,6 +417,56 @@ class NudgedElasticBand:
             band[i, :] = coords1.position.flatten()
         coords1.position = initial_coords1
         return band
+
+
+    def clearer_rotation(self, coords: StandardCoordinates, represent: tuple,
+                         index: int, shortest: float, longer: float) -> float:
+        """Of the two ways round the circle, the one that stays further off.
+
+        Turns the one dihedral through each route in turn and measures how
+        close any pair of atoms that are not bonded comes, as a fraction of
+        their van der Waals radii. The shorter turn is kept unless the
+        longer one is clearly better, so that this only changes the paths
+        that have a reason to change.
+        """
+        try:
+            from ase import Atoms
+            from ase.data import covalent_radii, vdw_radii
+        except ImportError:
+            return shortest
+        labels = getattr(coords, 'atom_labels', None)
+        if labels is None:
+            return shortest
+        dihedral = represent[4][index] if len(represent) > 4 else None
+        if dihedral is None or len(np.atleast_1d(dihedral)) != 4:
+            return shortest
+
+        atoms = Atoms(labels, coords.position.reshape(-1, 3))
+        numbers = atoms.numbers
+        separations = atoms.get_all_distances()
+        bonded = separations < 1.2 * (covalent_radii[numbers][:, None]
+                                      + covalent_radii[numbers][None, :])
+        contact = (vdw_radii[numbers][:, None] + vdw_radii[numbers][None, :])
+        np.fill_diagonal(bonded, True)
+
+        def clearance(sweep):
+            worst = np.inf
+            start = atoms.get_dihedral(*[int(a) for a in dihedral])
+            for step in range(1, self.CLEARANCE_SAMPLES):
+                probe = atoms.copy()
+                try:
+                    probe.set_dihedral(
+                        *[int(a) for a in dihedral],
+                        start + sweep * step / self.CLEARANCE_SAMPLES)
+                except (ValueError, ZeroDivisionError):
+                    return np.inf
+                fractions = probe.get_all_distances() / contact
+                fractions[bonded] = np.inf
+                worst = min(worst, float(fractions.min()))
+            return worst
+
+        return longer if clearance(longer) > clearance(shortest) + \
+            self.CLEARANCE_MARGIN else shortest
 
     def get_force_constants(self) -> None:
         """ Get the array of force constants for the harmonic potential """

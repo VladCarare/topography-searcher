@@ -1,7 +1,10 @@
 """ Module that contains the class for evaluating the energy of molecules
     via machine-learned potentials through the ase package """
 
+import os
+
 import numpy as np
+from ase.calculators.calculator import CalculatorError
 from nptyping import NDArray
 from ase import Atoms
 import warnings
@@ -20,6 +23,20 @@ def _as_energy(value) -> float:
         known rather than guarding at every use.
     """
     return float(np.asarray(value).reshape(-1)[0])
+
+
+# Energy reported when a calculator cannot evaluate a structure at all.
+# A semi-empirical or first-principles method solves an electronic
+# structure problem and can legitimately fail to converge on a distorted
+# geometry; the structure is then unreachable rather than the run being
+# broken, and a large finite energy says exactly that to whatever is
+# searching. Fitted models never refuse, so this only arises for the
+# physics-based calculators.
+UNREACHABLE_ENERGY = 1e6
+# the force field's harmonic terms reach 1e6 eV/A on a torn
+# structure, so the fallback direction is kept and the size clamped
+FALLBACK_MAX_GRADIENT = float(os.environ.get(
+    "MLP_FALLBACK_MAX_GRADIENT", "10.0"))
 
 
 class MachineLearningPotential(Potential):
@@ -57,6 +74,8 @@ class MachineLearningPotential(Potential):
                            positions=init_position)
         self.calculator_type = calculator_type
         # Set up the calculator based on the specified type
+        # how many structures the calculator could not evaluate
+        self.failed_evaluations = 0
         if self.calculator_type == 'torchani':
             import torchani, torch
             torch.set_default_dtype(torch.float64)
@@ -112,16 +131,77 @@ class MachineLearningPotential(Potential):
                 warnings.warn("Aimnet2 ignores 'device' argument")
             self.atoms.calc = \
                 AIMNet2ASE(model)
+        elif self.calculator_type == 'uma':
+            # UMA reads charge and spin from atoms.info and defaults them
+            # silently, so an uncharged closed-shell molecule has to say so
+            # explicitly rather than rely on the default being right.
+            from fairchem.core import FAIRChemCalculator, pretrained_mlip
+            if model == 'default':
+                model = 'uma-s-1p1'
+            predictor = pretrained_mlip.get_predict_unit(
+                model, device='cuda' if device == 'cuda' else 'cpu')
+            self.atoms.info.update({'charge': 0, 'spin': 1})
+            self.atoms.calc = FAIRChemCalculator(predictor, task_name='omol')
+        elif self.calculator_type == 'gfn2-xtb':
+            # Semi-empirical rather than fitted, so it serves as a control:
+            # a landscape it explores should contain no structures that
+            # chemistry forbids, whatever the search does.
+            from tblite.ase import TBLite
+            self.atoms.calc = TBLite(method='GFN2-xTB', verbosity=0)
         else:
             raise ValueError(
                 f"Unknown calculator_type {calculator_type!r}. Expected one "
-                "of: torchani, mace, mace-mp-0b3, nequip, so3lr, aimnet2")
+                "of: torchani, mace, mace-mp-0b3, nequip, so3lr, aimnet2, "
+                "gfn2-xtb, uma")
+
+    def _rebuild_calculator(self) -> None:
+        """Replace the calculator after it declined to evaluate a structure.
+
+        tblite does not fully recover from a failed calculation: a later
+        call aborts the process from inside its Fortran layer, which no
+        Python handler can catch. Rebuilding after each refusal keeps a
+        search alive, and costs nothing because refusals are rare on
+        structures that are not badly distorted.
+        """
+        if self.calculator_type == 'gfn2-xtb':
+            from tblite.ase import TBLite
+            self.atoms.calc = TBLite(method='GFN2-xTB', verbosity=0)
+
+    def _fallback(self, position: NDArray) -> tuple:
+        """Energy and gradient for a structure the model declined.
+
+        The force field stands in, shifted so the point stays
+        unattractive. Without a force field the gradient is zero, which
+        a minimiser reads as converged, so the structure can be stored
+        as a spurious minimum.
+        """
+        if self.force_field is None:
+            return UNREACHABLE_ENERGY, np.zeros_like(position)
+        energy, gradient = self.force_field.function_gradient(position)
+        gradient = np.asarray(gradient, dtype=float)
+        largest = np.abs(gradient).max()
+        if largest > FALLBACK_MAX_GRADIENT:
+            gradient = gradient * (FALLBACK_MAX_GRADIENT / largest)
+        return UNREACHABLE_ENERGY + float(energy), gradient
 
     def function(self, position: NDArray) -> float:
-        """ Compute the electronic potential energy """
+        """ Compute the electronic potential energy.
+
+            A calculator that cannot converge on this geometry reports the
+            structure as unreachable rather than raising, so that one bad
+            structure does not end a search. Only non-convergence is caught:
+            any other error is a genuine fault and still propagates.
+        """
         self.atoms.set_positions(position.reshape(-1, 3))
-        if self.calculator_type in ['mace', 'aimnet2', 'nequip','mace-mp-0b3','so3lr']:
-            energy = self.atoms.get_potential_energy()
+        if self.calculator_type in ['mace', 'aimnet2', 'nequip',
+                                   'mace-mp-0b3', 'so3lr',
+                                   'gfn2-xtb', 'uma']:
+            try:
+                energy = self.atoms.get_potential_energy()
+            except CalculatorError:
+                self.failed_evaluations += 1
+                self._rebuild_calculator()
+                return self._fallback(position)[0]
         elif self.calculator_type == 'torchani':
             import torch
             species = torch.tensor(self.atoms.get_atomic_numbers(),
@@ -136,10 +216,15 @@ class MachineLearningPotential(Potential):
         """ Compute the electronic potential energy and its forces """
         self.atoms.set_positions(position.reshape(-1, 3))
 
-        if self.calculator_type in ['mace','mace-mp-0b3','so3lr']:
-            # Calculate energy and forces using Psi4
-            forces = self.atoms.get_forces().flatten()
-            energy = self.atoms.get_potential_energy()
+        if self.calculator_type in ['mace', 'mace-mp-0b3', 'so3lr',
+                                    'gfn2-xtb', 'uma']:
+            try:
+                forces = self.atoms.get_forces().flatten()
+                energy = self.atoms.get_potential_energy()
+            except CalculatorError:
+                self.failed_evaluations += 1
+                self._rebuild_calculator()
+                return self._fallback(position)
             gradient = -1.0 * np.array(forces.tolist())
         elif self.calculator_type in ['aimnet2', 'nequip']:
             self.atoms.calc.calculate(self.atoms, properties=['energy', 'forces'])
@@ -161,10 +246,24 @@ class MachineLearningPotential(Potential):
         return _as_energy(energy), gradient
 
     def gradient(self, position: NDArray) -> NDArray:
-        """ Compute the analytical gradient from the ASE calculator """
+        """ Compute the analytical gradient from the ASE calculator.
+
+            A calculator that cannot converge on this geometry reports a
+            zero gradient alongside the unreachable energy its energy
+            method returns, so that one bad structure does not end a
+            search. Numerical second derivatives go through here, so
+            without this a Hessian anywhere near such a geometry fails.
+        """
         self.atoms.set_positions(position.reshape(-1, 3))
-        if self.calculator_type in ['mace', 'aimnet2', 'nequip','mace-mp-0b3','so3lr']:
-            forces = self.atoms.get_forces().flatten()
+        if self.calculator_type in ['mace', 'aimnet2', 'nequip',
+                                   'mace-mp-0b3', 'so3lr',
+                                   'gfn2-xtb', 'uma']:
+            try:
+                forces = self.atoms.get_forces().flatten()
+            except CalculatorError:
+                self.failed_evaluations += 1
+                self._rebuild_calculator()
+                return self._fallback(position)[1]
             gradient = -1.0 * np.array(forces.tolist())
         elif self.calculator_type == 'torchani':
             import torch
