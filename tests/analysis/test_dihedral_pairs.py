@@ -2,12 +2,19 @@
 
     closest_enumeration ranks neighbours by RMSD, which only loosely tracks
     the number of rotations an interpolation has to perform. Measured on
-    aspirin, 45% of the pairs it picks differ by three dihedrals, and those
-    carry a 16% chance of producing an off-reference structure against 0% for
-    one and 2% for two. Ranking by dihedral separation instead keeps the
-    interpolations short, and the landscape stays connected because the
-    remaining pairs reach each other through intermediate minima.
+    aspirin under GFN2-xTB, 45% of the pairs it picks differ by three
+    dihedrals, and those carry a 16% chance of producing an off-reference
+    structure against 0% for one and 2% for two. Ranking by dihedral
+    separation instead keeps the interpolations short, and the landscape
+    stays connected because the remaining pairs reach each other through
+    intermediate minima.
+
+    These tests cover the mechanics only. The landscape comparison was run
+    separately and came out flat, so the selector is kept as a recorded
+    negative result rather than as the recommended choice.
 """
+
+import os
 
 import numpy as np
 import pytest
@@ -19,8 +26,8 @@ from topsearch.analysis.pair_selection import (dihedral_enumeration,
 from topsearch.data.coordinates import MolecularCoordinates
 from topsearch.data.kinetic_transition_network import KineticTransitionNetwork
 
-TEMPLATES = ("/home/ec2-user/mlp-run/mlp-landscapes/examples/"
-             "template_molecules")
+current_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+TEMPLATES = f"{current_dir}/test_data"
 
 
 def network_of(molecule, source):
@@ -98,7 +105,7 @@ def test_separation_grows_with_the_number_of_bonds_turned():
 
 def test_enumeration_prefers_short_moves():
     """Every pair chosen is within the threshold that keeps minima reachable."""
-    source = "/tmp/salicylic_minima.xyz"
+    source = f"{TEMPLATES}/salicylic_minima.xyz"
     ktn, coords = network_of("salicylic", source)
     pairs, limit = dihedral_enumeration(ktn, coords, neighbours=2,
                                         report_limit=True)
@@ -113,7 +120,7 @@ def test_enumeration_leaves_no_minimum_stranded():
     """The pairs must still reach every minimum, or connectivity is lost."""
     import networkx as nx
     for molecule in ("salicylic", "aspirin", "paracetamol"):
-        source = f"/tmp/{molecule}_minima.xyz"
+        source = f"{TEMPLATES}/{molecule}_minima.xyz"
         ktn, coords = network_of(molecule, source)
         pairs, limit = dihedral_enumeration(ktn, coords, neighbours=2,
                                             report_limit=True)
@@ -126,7 +133,8 @@ def test_enumeration_leaves_no_minimum_stranded():
 
 
 def test_pairs_are_unique_and_ordered():
-    ktn, coords = network_of("salicylic", "/tmp/salicylic_minima.xyz")
+    ktn, coords = network_of("salicylic",
+                             f"{TEMPLATES}/salicylic_minima.xyz")
     pairs = dihedral_enumeration(ktn, coords, neighbours=2)
     assert all(i < j for i, j in pairs)
     assert len(pairs) == len({tuple(p) for p in pairs})

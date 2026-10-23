@@ -177,14 +177,6 @@ class NetworkSampling:
         """
         self.logger.info(f"Running connection attempts for {len(total_pairs)} pairs")
 
-        # One pair failing must not abandon the whole landscape. Interpolation
-        # between two minima can stretch a bond far enough that the dihedrals
-        # it is rotating no longer refer to a bond that exists, and that
-        # raises from deep inside the band construction. Skipping the pair
-        # costs one connection; letting it propagate costs every result the
-        # run has already accumulated.
-        self.failed_pairs = []
-
         # Set off connection attempts from the list total_pairs. A bound
         # method rather than a closure, since the parallel path pickles it.
         if self.multiprocessing_on:
@@ -195,8 +187,15 @@ class NetworkSampling:
             results = ((pair, self.attempt_connection(pair))
                        for pair in total_pairs)
 
+        # Counted here rather than inside the attempt, because the parallel
+        # path runs the attempt in a child process, where anything recorded
+        # on self is thrown away when the process exits.
+        failed_pairs = []
+
         for pair, stationary_point_information in results:
             self.logger.debug(f"Got a result for pair {pair}")
+            if stationary_point_information is None:
+                failed_pairs.append(list(pair))
             self.ktn.pairlist = np.append(
                     self.ktn.pairlist, np.array([np.sort(pair)]), axis=0)
             self.ktn.dump_network()
@@ -209,10 +208,10 @@ class NetworkSampling:
                                                 self.coords, j[1],
                                                 j[2], j[3],
                                                 j[4], j[5])
-        if self.failed_pairs:
+        if failed_pairs:
             self.logger.warning(
-                f"{len(self.failed_pairs)} of {len(total_pairs)} connection "
-                f"attempts failed and were skipped: {self.failed_pairs}")
+                f"{len(failed_pairs)} of {len(total_pairs)} connection "
+                f"attempts failed and were skipped: {failed_pairs}")
 
 
     def attempt_connection(self, pair: list) -> list:
@@ -223,13 +222,15 @@ class NetworkSampling:
             exists, which raises from deep inside the band construction.
             Losing one connection is a far smaller cost than losing every
             result the run has already accumulated.
+
+            None is reserved for a failure. A successful attempt that finds
+            nothing returns an empty list, so the caller can tell them apart.
         """
         try:
             return self.connection_attempt(pair)
         except Exception:
             self.logger.warning(f"Connection attempt failed for pair {pair}, "
                                 f"skipping it", exc_info=True)
-            self.failed_pairs.append(list(pair))
             return None
 
     def connection_attempt(self, pair: list) -> list:
@@ -381,9 +382,10 @@ class NetworkSampling:
         'DihedralEnumeration' - for each minimum generate pairs with the
         minima fewest dihedral rotations away, so that each interpolation
         turns as few angles at once as it can while leaving every minimum
-        reachable. Preferred for molecules: ranking by distance picks pairs
-        separated by three rotations 45% of the time on aspirin, and those
-        carry a 16% chance of an off-reference product against 0% for one.
+        reachable. Not the default: compared against ClosestEnumeration
+        over 100 landscapes it recovered no more of the DFT reference and
+        did not reduce off-bonding structures, so there is no reason to
+        prefer it yet.
         'ClosestEnumeration' - for each minimum generate pairs with the minima
                                that are closest in Euclidean distance.
         'ConnectUnconnected' - select pairs of minima that are closest in

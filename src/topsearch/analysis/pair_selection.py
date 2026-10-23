@@ -168,6 +168,15 @@ def dihedral_enumeration(ktn: KineticTransitionNetwork,
         raised until the graph of selected pairs is connected, which needed
         one rotation for salicylic acid, two for aspirin and malonaldehyde,
         and three for paracetamol.
+
+        The hypothesis did not survive the comparison. Against
+        closest_enumeration over 100 landscapes, 5 molecules x 2 models x 5
+        seeds, minima recovery was unchanged, transition-state recovery was
+        unchanged for GFN2-xTB and 8% worse for AIMNet2, and the off-bonding
+        structures this was written to remove stayed at 5 on aspirin. What
+        removed them was choosing the rotation direction by clearance, from 5
+        to 0. Those pairs were hard because one rotation swept a group
+        through the molecule, not because three happened at once.
     """
     import networkx as nx
 
