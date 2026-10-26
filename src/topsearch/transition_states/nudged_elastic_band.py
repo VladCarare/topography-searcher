@@ -6,7 +6,7 @@
 import os
 
 import numpy as np
-from nptyping import NDArray
+from numpy.typing import NDArray
 from topsearch.minimisation import lbfgs
 from topsearch.data.coordinates import MolecularCoordinates, StandardCoordinates
 from topsearch.potentials.potential import Potential

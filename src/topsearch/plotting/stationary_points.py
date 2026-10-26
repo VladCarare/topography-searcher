@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import matplotlib as mpl
 from matplotlib import rc
 import numpy as np
-from nptyping import NDArray
+from numpy.typing import NDArray
 from topsearch.data.kinetic_transition_network import KineticTransitionNetwork
 
 from topsearch.potentials.potential import Potential

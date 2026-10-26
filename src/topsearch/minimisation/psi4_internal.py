@@ -1,6 +1,6 @@
 "Use fast internal Optking routine to optimise geometry if doing DFT with Psi4."
 
-from nptyping import NDArray
+from numpy.typing import NDArray
 import numpy as np
 from ase.units import Bohr
 import contextlib

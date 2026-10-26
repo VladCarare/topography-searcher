@@ -8,7 +8,7 @@ import os
 from pathlib import Path
 import networkx as nx
 import numpy as np
-from nptyping import NDArray
+from numpy.typing import NDArray
 import traceback
 
 from topsearch.data.coordinates import StandardCoordinates

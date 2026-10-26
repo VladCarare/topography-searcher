@@ -3,7 +3,7 @@
     energy of atomic clusters within the Lennard-Jones and Gupta potentials """
 
 import numpy as np
-from nptyping import NDArray
+from numpy.typing import NDArray
 from .potential import Potential
 
 

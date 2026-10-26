@@ -2,7 +2,7 @@
     a training dataset for use in machine learning applications """
 
 import numpy as np
-from nptyping import NDArray
+from numpy.typing import NDArray
 from scipy.spatial import Delaunay
 
 

@@ -2,7 +2,7 @@
     double-ended transition state searches all rely on local minimisation """
 
 import scipy
-from nptyping import NDArray
+from numpy.typing import NDArray
 from ase.optimize import LBFGS
 from ase.atoms import Atoms
 

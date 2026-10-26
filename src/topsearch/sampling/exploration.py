@@ -10,7 +10,7 @@ from copy import deepcopy
 import warnings
 
 import numpy as np
-from nptyping import NDArray
+from numpy.typing import NDArray
 
 from topsearch.utils.parallel import run_parallel
 from topsearch.data.coordinates import StandardCoordinates

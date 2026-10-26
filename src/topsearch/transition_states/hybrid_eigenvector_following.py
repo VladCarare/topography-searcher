@@ -5,7 +5,7 @@ import logging
 from math import inf
 from copy import deepcopy
 import numpy as np
-from nptyping import NDArray
+from numpy.typing import NDArray
 from topsearch.minimisation import lbfgs
 from topsearch.data.coordinates import AtomicCoordinates, MolecularCoordinates, StandardCoordinates
 from topsearch.potentials.potential import Potential
@@ -287,7 +287,7 @@ class HybridEigenvectorFollowing:
             step_sizes = np.array([(i[1]-i[0])*0.02 for i in coords.bounds])
         upper_limit = coords.position + step_sizes
         lower_limit = coords.position - step_sizes
-        limits = np.row_stack((lower_limit, upper_limit))
+        limits = np.vstack((lower_limit, upper_limit))
         limits = np.clip(limits, coords.lower_bounds, coords.upper_bounds)
         return list(zip(limits[0], limits[1]))
 

@@ -6,7 +6,7 @@
 
 import random
 import numpy as np
-from nptyping import NDArray
+from numpy.typing import NDArray
 
 from topsearch.data.coordinates import AtomicCoordinates, MolecularCoordinates, StandardCoordinates
 

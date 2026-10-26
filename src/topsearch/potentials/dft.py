@@ -2,7 +2,7 @@
     calculations to compute the potential energy of atomistic systems """
 
 import numpy as np
-from nptyping import NDArray
+from numpy.typing import NDArray
 from ase.calculators.psi4 import Psi4
 from ase import Atoms
 from ase.units import Hartree, Bohr

@@ -5,7 +5,7 @@ import os
 
 import numpy as np
 from ase.calculators.calculator import CalculatorError
-from nptyping import NDArray
+from numpy.typing import NDArray
 from ase import Atoms
 import warnings
 from ase.units import Hartree

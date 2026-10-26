@@ -2,7 +2,7 @@
     force fields to compute the energy of atomistic systems """
 
 import numpy as np
-from nptyping import NDArray
+from numpy.typing import NDArray
 from rdkit import Chem
 from rdkit.Chem import AllChem
 from rdkit.Chem import rdDetermineBonds

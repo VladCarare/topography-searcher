@@ -10,7 +10,7 @@ from copy import deepcopy
 from .similarity import StandardSimilarity
 from ase.geometry.analysis import Analysis
 from ase import neighborlist
-from nptyping import NDArray
+from numpy.typing import NDArray
 
 
 class DihedralSimilarity(StandardSimilarity):

@@ -5,7 +5,7 @@ import logging
 import warnings
 import sys
 import numpy as np
-from nptyping import NDArray
+from numpy.typing import NDArray
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF, Matern, WhiteKernel
 

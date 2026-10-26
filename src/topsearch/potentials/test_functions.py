@@ -2,7 +2,7 @@
     can be used for validation and testing of the methodology """
 
 import numpy as np
-from nptyping import NDArray
+from numpy.typing import NDArray
 from .potential import Potential
 
 

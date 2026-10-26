@@ -4,7 +4,7 @@
 
 import scipy.stats
 import numpy as np
-from nptyping import NDArray
+from numpy.typing import NDArray
 
 from topsearch.potentials.gaussian_process import GaussianProcess
 from .potential import Potential
@@ -72,4 +72,4 @@ class UpperConfidenceBound(Potential):
     def function(self, position: NDArray) -> float:
         """ Return the value of the acquisition function """
         mean, std = self.gaussian_process.function_and_std(position)
-        return float(mean - self.zeta*std)
+        return float(np.asarray(mean - self.zeta*std).item())

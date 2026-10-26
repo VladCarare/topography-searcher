@@ -3,7 +3,7 @@
     value at any given position """
 
 import numpy as np
-from nptyping import NDArray
+from numpy.typing import NDArray
 from sklearn.neural_network import MLPRegressor
 from sklearn.model_selection import cross_validate, KFold
 from scipy.interpolate import RBFInterpolator
@@ -43,7 +43,7 @@ class DatasetInterpolation(Potential):
 
     def function(self, position: NDArray) -> float:
         """ Evaluate the value of the interpolation model """
-        return float(self.model(position.reshape(1, -1)))
+        return float(np.asarray(self.model(position.reshape(1, -1))).item())
 
     def refit_model(self) -> None:
         """ Refit the interpolation model for the current model_data """
@@ -94,7 +94,7 @@ class DatasetRegression(Potential):
 
     def function(self, position: NDArray) -> float:
         """ Evaluate the value of the regression model """
-        return float(self.model.predict(position.reshape(1, -1)))
+        return float(np.asarray(self.model.predict(position.reshape(1, -1))).item())
 
     def refit_model(self) -> None:
         """ Refit model and recalculate error based on current training """

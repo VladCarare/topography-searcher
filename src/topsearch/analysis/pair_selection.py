@@ -3,7 +3,7 @@
 
 import logging
 import numpy as np
-from nptyping import NDArray
+from numpy.typing import NDArray
 import networkx as nx
 from topsearch.data.coordinates import StandardCoordinates
 

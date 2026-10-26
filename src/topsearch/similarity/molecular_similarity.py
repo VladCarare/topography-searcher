@@ -5,7 +5,7 @@
     distance between configurations """
 
 import numpy as np
-from nptyping import NDArray
+from numpy.typing import NDArray
 from scipy.optimize import linear_sum_assignment
 from scipy.spatial import distance_matrix
 from scipy.spatial.transform import Rotation as rotations

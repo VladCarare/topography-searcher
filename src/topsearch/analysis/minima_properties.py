@@ -5,7 +5,7 @@
 import logging
 
 import numpy as np
-from nptyping import NDArray
+from numpy.typing import NDArray
 from numpy.testing import assert_allclose, assert_array_less
 from scipy.optimize import fmin_l_bfgs_b
 

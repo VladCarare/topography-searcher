@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 from copy import deepcopy
 import logging
 import numpy as np
-from nptyping import NDArray
+from numpy.typing import NDArray
 from topsearch.data.coordinates import StandardCoordinates
 
 if TYPE_CHECKING:
