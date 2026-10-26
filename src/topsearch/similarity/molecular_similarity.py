@@ -54,12 +54,14 @@ class MolecularSimilarity(StandardSimilarity):
                                 allBondsExplicit=True)
 
     def __init__(self, distance_criterion: float, energy_criterion: float,
-                 weighted: bool = False, allow_inversion: bool = False):
+                 weighted: bool = False, allow_inversion: bool = False,
+                 keep_symmetry_copies: bool = False):
         super().__init__(distance_criterion,energy_criterion)
         self.distance_criterion = distance_criterion
         self.energy_criterion = energy_criterion
         self.weighted = weighted
         self.allow_inversion = allow_inversion
+        self.keep_symmetry_copies = keep_symmetry_copies
 
     def permutational_alignment(self, coords1: MolecularCoordinates,
                                 coords2: NDArray) -> tuple:
@@ -328,7 +330,35 @@ class MolecularSimilarity(StandardSimilarity):
         within_distance = \
             self.closest_distance(coords1, coords2) < self.distance_criterion
         within_energy = np.abs(energy1-energy2) < self.energy_criterion
+        if within_distance and within_energy and self.keep_symmetry_copies:
+            # Close only after relabelling means these are two copies of one
+            # structure related by a symmetry of the molecule, not one
+            # structure found twice. Keep them apart, so the rearrangement
+            # between them can be searched for as an ordinary edge.
+            return bool(self.in_place_distance(coords1, coords2)
+                        < self.distance_criterion)
         return bool(within_distance and within_energy)
+
+    def in_place_distance(self, coords1: MolecularCoordinates,
+                          coords2: NDArray) -> float:
+        """ Distance allowing rotation and translation but NOT relabelling.
+
+            closest_distance permutes the atoms, so an automorphic image of a
+            structure comes back at nearly zero. This keeps the labelling
+            fixed, which is what distinguishes a genuine repeat from a
+            symmetry copy.
+        """
+        first = self.centre(coords1.position.copy(),
+                            weights=coords1.atom_weights)
+        second = self.centre(np.asarray(coords2).copy(),
+                             weights=coords1.atom_weights)
+        held = coords1.position.copy()
+        coords1.position = first
+        try:
+            distance, _ = self.rotational_alignment(coords1, second)
+        finally:
+            coords1.position = held
+        return float(distance)
 
     def closest_distance(self, coords1: MolecularCoordinates, coords2: NDArray) -> float:
         """ Align two structures and return the optimised distance """
