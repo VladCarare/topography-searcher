@@ -591,3 +591,46 @@ def test_max_eig_steps_for_subspace():
     hef = HybridEigenvectorFollowing(camel, 1e-4, 50, 5e-1,
                                      max_eig_steps_for_subspace=None)
     assert hef.max_eig_steps_for_subspace is None
+
+
+def test_n_steps_counts_a_successful_search():
+    """A converged search reports how many steps it took, within its budget."""
+    coords = StandardCoordinates(ndim=2, bounds=[(-3.0, 3.0), (-2.0, 2.0)])
+    single_ended = HybridEigenvectorFollowing(Camelback(), 1e-6, 50, 5e-1)
+    coords.position = np.array([-1.16046538004201443, -0.8050858882331980881])
+    result = single_ended.run(coords)
+    assert result[0] is not None
+    assert 0 < single_ended.n_steps <= 50
+
+
+def test_n_steps_reports_the_budget_when_it_is_exhausted():
+    """A search that runs out of steps reports the budget it used up."""
+    coords = StandardCoordinates(ndim=2, bounds=[(-3.0, 3.0), (-2.0, 2.0)])
+    single_ended = HybridEigenvectorFollowing(Camelback(), 1e-12, 3, 5e-1)
+    coords.position = np.array([-1.16046538004201443, -0.8050858882331980881])
+    result = single_ended.run(coords)
+    assert result[0] is None
+    assert single_ended.failure == "steps"
+    assert single_ended.n_steps == 3
+
+
+def test_n_steps_is_reset_between_runs():
+    """A run that takes no steps at all reports zero, not the previous count.
+
+    The counter is assigned inside the step loop, so every run that enters the
+    loop overwrites it anyway. The reset is what stops a run that never enters
+    the loop from reporting the count of the run before it.
+    """
+    start = np.array([-1.16046538004201443, -0.8050858882331980881])
+    coords = StandardCoordinates(ndim=2, bounds=[(-3.0, 3.0), (-2.0, 2.0)])
+    single_ended = HybridEigenvectorFollowing(Camelback(), 1e-6, 50, 5e-1)
+
+    coords.position = start.copy()
+    single_ended.run(coords)
+    assert single_ended.n_steps > 0
+
+    single_ended.ts_steps = 0
+    coords.position = start.copy()
+    result = single_ended.run(coords)
+    assert result[0] is None
+    assert single_ended.n_steps == 0

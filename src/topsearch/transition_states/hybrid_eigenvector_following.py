@@ -82,6 +82,10 @@ class HybridEigenvectorFollowing:
         self.pushoff = pushoff
         self.eigenvector_bounds = None
         self.failure = None
+        # Steps the most recent run took. Reported alongside a result so that
+        # a search limited by ts_steps can be told apart from one the
+        # potential genuinely resolved, without re-running it.
+        self.n_steps = 0
         self.remove_trans_rot = None
         self.output_level = output_level
         self.logger = logging.getLogger("HEF")
@@ -107,6 +111,7 @@ class HybridEigenvectorFollowing:
         self.eigenvector_bounds = [(-inf, inf)]*coords.ndim
         # Set the initial failure reporting
         self.failure = None
+        self.n_steps = 0
 
         # Set appropriate initial eigenvector bounds
         lower_bounds, upper_bounds = coords.active_bounds()
@@ -114,6 +119,7 @@ class HybridEigenvectorFollowing:
 
         # Take steps to find transition states until convergence or too many
         for n_steps in range(self.ts_steps):
+            self.n_steps = n_steps + 1
             self.logger.debug("Step = %i", n_steps)
             self.logger.debug("coords.position = %s",  coords.position)
             # Find the smallest eigenvalue and associated eigenvector
