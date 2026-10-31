@@ -230,12 +230,21 @@ class BasinHopping:
                             conv_crit=conv_crit)
         else:
             raise ValueError("Invalid optimisation method, options are 'scipy' or 'psi4'")
-        coords.position = min_position
-        # After minimisation add to the existing stationary point network
+        # Only adopt the minimised coordinates when the minimisation actually
+        # converged. A diverged one can return a collapsed geometry, and since
+        # this becomes the Markov state that every later step is perturbed
+        # from, adopting it lets a single bad minimisation poison the whole
+        # run: every subsequent step starts from the wreck and is rejected.
         if results_dict['warnflag'] == 0:
+            coords.position = min_position
+            # After minimisation add to the existing stationary point network
             self.similarity.test_new_minimum(self.ktn, coords, energy)
-        elif results_dict['warnflag'] == 1:
-            self.logger.info("Initial minimisation did not converge")
+        else:
+            self.logger.warning(
+                "Initial minimisation failed with warnflag %s; keeping the "
+                "starting coordinates as the Markov state",
+                results_dict['warnflag'])
+            energy = self.potential.function_gradient(coords.position)[0]
              
         return energy
 
