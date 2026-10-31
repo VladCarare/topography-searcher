@@ -312,3 +312,61 @@ def test_converged_initial_minimisation_is_adopted(monkeypatch):
     assert_array_equal(coords.position, moved)
     assert ktn.n_minima == 1
     assert energy == pytest.approx(-7.0)
+
+
+def test_every_clashed_step_is_recorded():
+    coords = _water_coordinates()
+    record = []
+    basin_hopping = BasinHopping(ktn=KineticTransitionNetwork(),
+                                 potential=_CountingPotential(coords.position),
+                                 similarity=MolecularSimilarity(0.1, 0.1),
+                                 step_taking=_CollapseTwoAtoms(),
+                                 record=record)
+    basin_hopping.run(coords=coords, n_steps=4, conv_crit=1e-6, temperature=1.0)
+
+    assert len(record) == 4
+    assert [e['verdict'] for e in record] == ['clashed']*4
+    # A step rejected before minimisation has a perturbed geometry but no
+    # relaxed one, and that perturbed geometry is the clash itself
+    for entry in record:
+        assert entry['relaxed'] is None
+        assert entry['warnflag'] is None
+        positions = entry['perturbed'].reshape(-1, 3)
+        separations = np.linalg.norm(
+            positions[:, None, :] - positions[None, :, :], axis=-1)
+        np.fill_diagonal(separations, np.inf)
+        assert separations.min() < MIN_ATOM_SEPARATION
+
+
+def test_kept_steps_are_recorded_with_both_geometries():
+    record = []
+    step_taking = StandardPerturbation(max_displacement=0.7,
+                                       proportional_distance=True)
+    basin_hopping = BasinHopping(ktn=KineticTransitionNetwork(),
+                                 potential=Camelback(),
+                                 similarity=StandardSimilarity(0.1, 0.1),
+                                 step_taking=step_taking,
+                                 record=record)
+    coords = StandardCoordinates(ndim=2, bounds=[(-3.0, 3.0), (-2.0, 2.0)])
+    basin_hopping.run(coords=coords, n_steps=6, conv_crit=1e-6, temperature=1.0)
+
+    assert len(record) == 6
+    for entry in record:
+        assert entry['relaxed'] is not None
+        assert entry['energy'] is not None
+        assert entry['warnflag'] is not None
+        assert entry['n_iterations'] >= 0
+    assert {e['verdict'] for e in record} <= {'kept', 'unconverged',
+                                              'bonding_changed', 'clashed'}
+
+
+def test_no_record_is_kept_by_default():
+    step_taking = StandardPerturbation(max_displacement=0.7,
+                                       proportional_distance=True)
+    basin_hopping = BasinHopping(ktn=KineticTransitionNetwork(),
+                                 potential=Camelback(),
+                                 similarity=StandardSimilarity(0.1, 0.1),
+                                 step_taking=step_taking)
+    coords = StandardCoordinates(ndim=2, bounds=[(-3.0, 3.0), (-2.0, 2.0)])
+    basin_hopping.run(coords=coords, n_steps=3, conv_crit=1e-6, temperature=1.0)
+    assert basin_hopping.record is None

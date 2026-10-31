@@ -56,7 +56,8 @@ class BasinHopping:
                  step_taking: StandardPerturbation | AtomicPerturbation | MolecularPerturbation,
                  opt_method: str = 'scipy',
                  ignore_relreduc: bool = False,
-                 max_minimisation_steps: int = 200) -> None:
+                 max_minimisation_steps: int = 200,
+                 record: list | None = None) -> None:
         self.ktn = ktn
         self.potential = potential
         self.similarity = similarity
@@ -65,6 +66,10 @@ class BasinHopping:
         self.opt_method = opt_method
         self.ignore_relreduc = ignore_relreduc
         self.max_minimisation_steps = max_minimisation_steps
+        # Optional per-step log. The caller owns it and whatever it does with
+        # it, so the library stays free of file handling; every step lands in
+        # it, accepted or rejected, with the reason.
+        self.record = record
 
     def run_batch(self, initial_positions: np.ndarray, coords: type, n_steps: int, conv_crit: float,
                 temperature: float, num_proc=8) -> None:
@@ -132,8 +137,11 @@ class BasinHopping:
                 self.logger.info(f"Step {i+1}: rejected before minimisation, "
                                  f"closest atoms {separation:.3f} < "
                                  f"{MIN_ATOM_SEPARATION} Angstrom")
+                self.note_step(i, 'clashed', coords.position)
                 coords.position = markov_coords
                 continue
+            # Kept only for the record, so not copied when nobody asked for one
+            perturbed = None if self.record is None else coords.position.copy()
             # Perform local minimisation
             if self.opt_method == 'scipy':
                 min_position, energy, results_dict = \
@@ -164,6 +172,8 @@ class BasinHopping:
                         and not self.ignore_relreduc):
                 
                 self.logger.info(f"Step {i+1}: Could not converge with {results_dict} \n")
+                self.note_step(i, 'unconverged', perturbed, min_position,
+                               energy, results_dict)
                 # Revert to previous coordinates
                 coords.position = markov_coords
                 continue
@@ -174,8 +184,12 @@ class BasinHopping:
                 # Bonds have been changed so reject step
                 if not coords.same_bonds():
                     # Revert coordinates and reject step
+                    self.note_step(i, 'bonding_changed', perturbed,
+                                   min_position, energy, results_dict)
                     coords.position = markov_coords
                     continue
+            self.note_step(i, 'kept', perturbed, min_position, energy,
+                           results_dict)
             # Check the Metropolis criterion for acceptance of new state
             if self.metropolis(markov_energy, energy, temperature):
                 # Check similarity and add if different to all existing minima
@@ -190,6 +204,26 @@ class BasinHopping:
                 energy = markov_energy
         end_time = timer()
         self.write_final_information(start_time, end_time)
+
+    def note_step(self, step: int, verdict: str, before: np.ndarray,
+                  after: np.ndarray = None, energy: float = None,
+                  results_dict: dict = None) -> None:
+        """ Append one basin hopping step to the caller's record, if they
+            asked for one. `before` is the perturbed geometry handed to the
+            minimiser and `after` what it returned, absent for a step rejected
+            before any minimisation. """
+        if self.record is None:
+            return
+        entry = {'step': step, 'verdict': verdict,
+                 'perturbed': np.array(before, dtype=float).copy(),
+                 'relaxed': None if after is None
+                            else np.array(after, dtype=float).copy(),
+                 'energy': None if energy is None else float(energy),
+                 'warnflag': None if results_dict is None
+                             else int(results_dict['warnflag']),
+                 'n_iterations': None if results_dict is None
+                                 else int(results_dict.get('nit', -1))}
+        self.record.append(entry)
 
     def closest_approach(self, coords) -> float:
         """ Smallest distance between any pair of atoms, in Angstrom.
