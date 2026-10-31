@@ -16,6 +16,11 @@ from topsearch.similarity.similarity import StandardSimilarity
 from topsearch.utils.parallel import run_parallel
 from tqdm.auto import tqdm, trange
 
+#: Reject a perturbed geometry outright if any pair of atoms is closer than
+#: this, in Angstrom. Such geometries are unphysical and the minimiser aborts
+#: on them immediately, so there is nothing to be gained by relaxing them.
+MIN_ATOM_SEPARATION = 0.6
+
 class BasinHopping:
 
     """
@@ -50,7 +55,8 @@ class BasinHopping:
                  similarity: StandardSimilarity,
                  step_taking: StandardPerturbation | AtomicPerturbation | MolecularPerturbation,
                  opt_method: str = 'scipy',
-                 ignore_relreduc: bool = False) -> None:
+                 ignore_relreduc: bool = False,
+                 max_minimisation_steps: int = 200) -> None:
         self.ktn = ktn
         self.potential = potential
         self.similarity = similarity
@@ -58,6 +64,7 @@ class BasinHopping:
         self.logger = logging.getLogger("basin-hopping")
         self.opt_method = opt_method
         self.ignore_relreduc = ignore_relreduc
+        self.max_minimisation_steps = max_minimisation_steps
 
     def run_batch(self, initial_positions: np.ndarray, coords: type, n_steps: int, conv_crit: float,
                 temperature: float, num_proc=8) -> None:
@@ -119,19 +126,29 @@ class BasinHopping:
                                       "skipping clash removal")
             elif isinstance(coords, AtomicCoordinates):
                 coords.remove_atom_clashes()
+            # Reject a geometry whose atoms overlap rather than minimising it
+            separation = self.closest_approach(coords)
+            if separation < MIN_ATOM_SEPARATION:
+                self.logger.info(f"Step {i+1}: rejected before minimisation, "
+                                 f"closest atoms {separation:.3f} < "
+                                 f"{MIN_ATOM_SEPARATION} Angstrom")
+                coords.position = markov_coords
+                continue
             # Perform local minimisation
             if self.opt_method == 'scipy':
                 min_position, energy, results_dict = \
                     lbfgs.minimise(func_grad=self.potential.function_gradient,
                                 initial_position=coords.position,
                                 bounds=coords.bounds,
-                                conv_crit=conv_crit)
+                                conv_crit=conv_crit,
+                                n_steps=self.max_minimisation_steps)
             elif self.opt_method == 'ase':
                 min_position, energy, results_dict = \
                     lbfgs.minimise_ase(self.potential,
                                        initial_position=coords.position,
                                        numbers=coords.atoms.numbers,
-                                       conv_crit=conv_crit)
+                                       conv_crit=conv_crit,
+                                       n_steps=self.max_minimisation_steps)
             elif self.opt_method == 'psi4':
                 if not isinstance(self.potential, DensityFunctionalTheory):
                     raise ValueError("Psi4 optimisation method requires DFT potential")
@@ -174,6 +191,17 @@ class BasinHopping:
         end_time = timer()
         self.write_final_information(start_time, end_time)
 
+    def closest_approach(self, coords) -> float:
+        """ Smallest distance between any pair of atoms, in Angstrom.
+            Returns infinity for coordinate types that are not atomic. """
+        if not isinstance(coords, (AtomicCoordinates, MolecularCoordinates)):
+            return np.inf
+        positions = coords.position.reshape(-1, 3)
+        separations = np.linalg.norm(
+            positions[:, None, :] - positions[None, :, :], axis=-1)
+        np.fill_diagonal(separations, np.inf)
+        return float(separations.min())
+
     def prepare_initial_coordinates(self, coords: StandardCoordinates,
                                     conv_crit: float) -> float:
         """ Generate the initial minimum and set its energy and position """
@@ -183,14 +211,16 @@ class BasinHopping:
                 lbfgs.minimise(func_grad=self.potential.function_gradient,
                             initial_position=coords.position,
                             bounds=coords.bounds,
-                            conv_crit=conv_crit)
+                            conv_crit=conv_crit,
+                            n_steps=self.max_minimisation_steps)
             self.logger.debug(f"Initial minima: {min_position}, energy: {energy}, results_dict: {results_dict}")
         elif self.opt_method == 'ase':
                 min_position, energy, results_dict = \
                     lbfgs.minimise_ase(self.potential,
                                        initial_position=coords.position,
                                        numbers=coords.atoms.numbers,
-                                       conv_crit=conv_crit)
+                                       conv_crit=conv_crit,
+                                       n_steps=self.max_minimisation_steps)
         elif self.opt_method == 'psi4':
             if not isinstance(self.potential, DensityFunctionalTheory):
                 raise ValueError("Psi4 optimisation method requires DFT potential")

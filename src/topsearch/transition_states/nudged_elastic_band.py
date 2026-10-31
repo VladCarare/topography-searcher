@@ -20,6 +20,17 @@ import logging
 # interpolation reaches 0.565 A on multi-dihedral moves, and the bonding
 # graph breaks two images before the clash itself appears.
 MIN_IMAGE_SEPARATION = 0.9
+# Closest a pair of atoms that are NOT BONDED may come in an interpolated
+# image, as a fraction of their van der Waals sum. The absolute test above
+# cannot do this job: it takes the shortest distance over every pair, bonded
+# included, so its threshold has to sit below the shortest real bond -- an O-H
+# near 0.96 A -- and is therefore blind to a non-bonded contact at 0.94 A,
+# which is the case that is actually wrong. Measured over the 83 DFT reference
+# stationary points of all six Landscape17 molecules the tightest genuine
+# non-bonded contact is 0.636 of the van der Waals sum, and over 41 aspirin
+# interpolations this rejects all 20 that drive a non-bonded pair inside 1.5 A
+# and none of the 21 that do not.
+MIN_NONBONDED_FRACTION = 0.55
 # How many points along a candidate rotation to test for
 # clearance, and how much better the longer way has to be
 # before it is preferred, as a fraction of the van der Waals
@@ -36,12 +47,14 @@ class BandRejected(RuntimeError):
     looked at rather than merely counted as a failure.
     """
 
-    def __init__(self, band, separation, scheme):
-        super().__init__(f"{scheme} interpolation has atoms {separation:.3f} "
+    def __init__(self, band, separation, scheme, reason=None):
+        super().__init__(reason or
+                         f"{scheme} interpolation has atoms {separation:.3f} "
                          f"A apart, below {MIN_IMAGE_SEPARATION} A")
         self.band = np.array(band, copy=True)
         self.separation = float(separation)
         self.scheme = scheme
+        self.reason = reason
 
 
 class NudgedElasticBand:
@@ -168,6 +181,64 @@ class NudgedElasticBand:
             shortest = min(shortest, float(spread.min()))
         return shortest
 
+    def nonbonded_fraction(self, band: NDArray,
+                           coords1: StandardCoordinates) -> float:
+        """Closest non-bonded approach in a band, over its van der Waals sum.
+
+        The same measure choose_rotation uses, so the module has one notion of
+        which atoms are not allowed to touch. Bonding is read from the
+        endpoint, which is a real minimum, rather than from each image: an
+        image that has driven two atoms together would otherwise count the
+        contact as a new bond and excuse itself.
+
+        Returns infinity when the bonding cannot be determined, leaving the
+        absolute test as the only guard rather than refusing every band.
+        """
+        try:
+            from ase import Atoms
+            from ase.data import covalent_radii, vdw_radii
+        except ImportError:
+            return np.inf
+        labels = getattr(coords1, 'atom_labels', None)
+        if labels is None:
+            return np.inf
+
+        endpoint = Atoms(labels, coords1.position.reshape(-1, 3))
+        numbers = endpoint.numbers
+        bonded = endpoint.get_all_distances() < 1.2 * (
+            covalent_radii[numbers][:, None]
+            + covalent_radii[numbers][None, :])
+        np.fill_diagonal(bonded, True)
+        contact = (vdw_radii[numbers][:, None] + vdw_radii[numbers][None, :])
+
+        worst = np.inf
+        for image in np.asarray(band).reshape(self.n_images, -1):
+            probe = Atoms(labels, image.reshape(-1, 3))
+            fractions = probe.get_all_distances() / contact
+            fractions[bonded] = np.inf
+            worst = min(worst, float(fractions.min()))
+        return worst
+
+    def unusable(self, band: NDArray,
+                 coords1: StandardCoordinates) -> tuple:
+        """Why a band cannot be used, or None if it can.
+
+        Two tests, because neither subsumes the other: the absolute one
+        catches a collapse so severe that the bonding graph is meaningless,
+        and the fractional one catches a non-bonded pair driven to bonding
+        distance, which the absolute one cannot see.
+        """
+        separation = self.closest_contact(band)
+        if separation < MIN_IMAGE_SEPARATION:
+            return separation, (f"atoms {separation:.3f} A apart, below "
+                                f"{MIN_IMAGE_SEPARATION} A")
+        fraction = self.nonbonded_fraction(band, coords1)
+        if fraction < MIN_NONBONDED_FRACTION:
+            return fraction, (f"non-bonded atoms at {fraction:.3f} of their "
+                              f"van der Waals sum, below "
+                              f"{MIN_NONBONDED_FRACTION}")
+        return None
+
     def reject_overlapping(self, band: NDArray,
                            coords1: StandardCoordinates,
                            coords2: NDArray) -> NDArray:
@@ -177,21 +248,26 @@ class NudgedElasticBand:
         other. Linear interpolation cannot do that, so it is tried before
         the pair is given up on.
         """
-        separation = self.closest_contact(band)
-        if separation >= MIN_IMAGE_SEPARATION:
+        failure = self.unusable(band, coords1)
+        if failure is None:
             return band
-        self.logger.info(f"Dihedral interpolation reached {separation:.3f} A; "
+        measure, why = failure
+        self.logger.info(f"Dihedral interpolation refused: {why}; "
                          f"retrying linearly")
         self.rejected_bands.append({"scheme": "dihedral",
-                                    "separation": float(separation),
+                                    "separation": float(measure),
+                                    "reason": why,
                                     "band": np.array(band, copy=True)})
         band = self.linear_interpolation(coords1, coords2)
-        separation = self.closest_contact(band)
-        if separation < MIN_IMAGE_SEPARATION:
+        failure = self.unusable(band, coords1)
+        if failure is not None:
+            measure, why = failure
             self.rejected_bands.append({"scheme": "linear",
-                                        "separation": float(separation),
+                                        "separation": float(measure),
+                                        "reason": why,
                                         "band": np.array(band, copy=True)})
-            raise BandRejected(band, separation, "linear")
+            raise BandRejected(band, measure, "linear",
+                               reason=f"linear interpolation has {why}")
         return band
 
     def initial_interpolation(self, coords1: StandardCoordinates, coords2: NDArray,
